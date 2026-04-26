@@ -39,13 +39,14 @@ export default function Login() {
       });
 
       if (authError) {
-        if (authError.message.includes('Invalid login credentials')) {
+        console.error('Supabase auth error:', authError);
+        if (authError.message === 'Invalid login credentials') {
           throw new Error("Cet identifiant n'est pas reconnu ou le mot de passe est incorrect. Veuillez vérifier vos accès.");
         }
         if (authError.message.includes('Email not confirmed')) {
           throw new Error("Votre adresse email n'a pas encore été confirmée. Veuillez vérifier votre boîte de réception.");
         }
-        throw authError;
+        throw new Error(authError.message);
       }
 
       if (!authData.user) throw new Error("Une erreur inattendue est survenue lors de la connexion.");
@@ -55,11 +56,16 @@ export default function Login() {
         .from('profiles')
         .select('*')
         .eq('id', authData.user.id)
-        .single();
+        .maybeSingle();
 
-      if (profileError || !profile) {
+      if (profileError) {
+        console.error('Profile fetch error:', profileError);
+        throw new Error("Erreur technique lors de la récupération du profil.");
+      }
+      
+      if (!profile) {
         await supabase.auth.signOut();
-        throw new Error("Compte authentifié mais profil introuvable. Veuillez contacter le support.");
+        throw new Error("Compte authentifié mais profil introuvable. Veuillez vérifier que votre inscription a été finalisée.");
       }
 
       // 3. Vérification de la cohérence du rôle
