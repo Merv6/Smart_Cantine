@@ -336,7 +336,7 @@ export default function Register() {
                     className="flex-[2] rounded-xl bg-brand-green" 
                     isLoading={isLoading}
                   >
-                    Soumettre la demande
+                    {isLoading ? 'Traitement en cours...' : 'Soumettre la demande'}
                   </Button>
                 </div>
               </motion.div>

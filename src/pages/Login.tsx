@@ -34,12 +34,21 @@ export default function Login() {
     try {
       // 1. Connexion Supabase
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: identifier, // On suppose que l'identifiant est l'email
+        email: identifier.trim(),
         password: password,
       });
 
-      if (authError) throw authError;
-      if (!authData.user) throw new Error("Erreur de connexion");
+      if (authError) {
+        if (authError.message.includes('Invalid login credentials')) {
+          throw new Error("Cet identifiant n'est pas reconnu ou le mot de passe est incorrect. Veuillez vérifier vos accès.");
+        }
+        if (authError.message.includes('Email not confirmed')) {
+          throw new Error("Votre adresse email n'a pas encore été confirmée. Veuillez vérifier votre boîte de réception.");
+        }
+        throw authError;
+      }
+
+      if (!authData.user) throw new Error("Une erreur inattendue est survenue lors de la connexion.");
 
       // 2. Récupération du profil pour vérifier le rôle et le CIP
       const { data: profile, error: profileError } = await supabase
@@ -48,7 +57,10 @@ export default function Login() {
         .eq('id', authData.user.id)
         .single();
 
-      if (profileError) throw new Error("Impossible de récupérer votre profil.");
+      if (profileError || !profile) {
+        await supabase.auth.signOut();
+        throw new Error("Compte authentifié mais profil introuvable. Veuillez contacter le support.");
+      }
 
       // 3. Vérification de la cohérence du rôle
       if (profile.role !== selectedRole) {
@@ -103,7 +115,11 @@ export default function Login() {
           <p className="text-slate-500">Choisissez votre rôle et identifiez-vous</p>
         </div>
 
-        <div className="bg-white p-8 rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100">
+        <motion.div
+          animate={error ? { x: [-5, 5, -5, 5, 0] } : {}}
+          transition={{ duration: 0.4 }}
+          className="bg-white p-8 rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100"
+        >
           {/* Role Selection */}
           <div className="grid grid-cols-3 gap-3 mb-8">
             {roles.map(role => (
@@ -149,12 +165,14 @@ export default function Login() {
             </AnimatePresence>
 
             <Input
-              label="Nom d'utilisateur ou Identifiant"
-              placeholder="Ex: j.dupont"
+              label="Adresse Email"
+              type="email"
+              placeholder="votre@email.com"
               required
               value={identifier}
               onChange={e => setIdentifier(e.target.value)}
               className="rounded-xl"
+              icon={<Mail size={18} />}
             />
             
             <Input
@@ -165,6 +183,7 @@ export default function Login() {
               value={password}
               onChange={e => setPassword(e.target.value)}
               className="rounded-xl"
+              icon={<Lock size={18} />}
             />
 
             <AnimatePresence>
@@ -202,7 +221,8 @@ export default function Login() {
               className="w-full rounded-xl py-6 text-base font-bold bg-brand-green hover:bg-brand-green/90 mt-4 shadow-xl shadow-brand-green/20"
               isLoading={isLoading}
             >
-              Accéder au Portail <ArrowRight className="ml-2" size={18} />
+              {isLoading ? 'Authentification...' : 'Accéder au Portail'} 
+              {!isLoading && <ArrowRight className="ml-2" size={18} />}
             </Button>
           </form>
 
@@ -214,7 +234,7 @@ export default function Login() {
               </Link>
             </p>
           </div>
-        </div>
+        </motion.div>
         
         <div className="mt-10 text-center">
            <p className="text-xs text-slate-400">
