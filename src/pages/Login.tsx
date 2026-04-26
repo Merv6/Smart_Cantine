@@ -4,6 +4,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Lock, Mail, User, ArrowLeft, ArrowRight, ShieldCheck, ChefHat, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Button, Input } from '../components/ui';
 
+import { supabase } from '../lib/supabase';
+
 export default function Login() {
   const [isLoading, setIsLoading] = React.useState(false);
   const [selectedRole, setSelectedRole] = React.useState<'DIRECTOR' | 'COOK' | 'SUPER_ADMIN' | null>(null);
@@ -13,7 +15,7 @@ export default function Login() {
   const [error, setError] = React.useState('');
   const navigate = useNavigate();
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -27,26 +29,50 @@ export default function Login() {
       return;
     }
 
-    // Admin Security Code Validation
-    if (selectedRole === 'SUPER_ADMIN') {
-      if (!securityCode) {
-        setError('Le numéro CIP est obligatoire pour les administrateurs.');
-        return;
-      }
-      const registeredCIP = localStorage.getItem('registeredCIP') || '1234';
-      if (securityCode !== registeredCIP) {
-        setError('Numéro d’identification CIP incorrect.');
-        return;
-      }
-    }
-
     setIsLoading(true);
-    // Simulation
-    setTimeout(() => {
-      setIsLoading(false);
-      localStorage.setItem('userRole', selectedRole);
+
+    try {
+      // 1. Connexion Supabase
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: identifier, // On suppose que l'identifiant est l'email
+        password: password,
+      });
+
+      if (authError) throw authError;
+      if (!authData.user) throw new Error("Erreur de connexion");
+
+      // 2. Récupération du profil pour vérifier le rôle et le CIP
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', authData.user.id)
+        .single();
+
+      if (profileError) throw new Error("Impossible de récupérer votre profil.");
+
+      // 3. Vérification de la cohérence du rôle
+      if (profile.role !== selectedRole) {
+        await supabase.auth.signOut();
+        throw new Error(`Ce compte n'est pas enregistré en tant que ${selectedRole === 'SUPER_ADMIN' ? 'Administrateur' : selectedRole.toLowerCase()}.`);
+      }
+
+      // 4. Validation CIP pour l'administrateur
+      if (selectedRole === 'SUPER_ADMIN') {
+        if (securityCode !== profile.cip_number) {
+          await supabase.auth.signOut();
+          throw new Error('Numéro d’identification CIP incorrect.');
+        }
+      }
+
+      // Succès
+      localStorage.setItem('userRole', profile.role);
       navigate('/dashboard');
-    }, 1500);
+    } catch (err: any) {
+      console.error('Erreur login:', err);
+      setError(err.message || "Email ou mot de passe incorrect.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const roles = [

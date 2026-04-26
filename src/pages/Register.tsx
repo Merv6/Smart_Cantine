@@ -5,6 +5,8 @@ import { ArrowLeft, ArrowRight, Upload, CheckCircle2, Utensils, ShieldCheck, Che
 import { Button, Input } from '../components/ui';
 import { BENIN_LOCATIONS } from '../constants/benin';
 
+import { supabase } from '../lib/supabase';
+
 export default function Register() {
   const [step, setStep] = React.useState(0);
   const [isLoading, setIsLoading] = React.useState(false);
@@ -64,20 +66,55 @@ export default function Register() {
     else setStep(prev => prev - 1);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.document) {
       setError('Veuillez télécharger un document justificatif.');
       return;
     }
+    
     setIsLoading(true);
-    setTimeout(() => {
+    setError('');
+
+    try {
+      // 1. Authentification Supabase (SignUp)
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
+        options: {
+          data: {
+            full_name: formData.name,
+          }
+        }
+      });
+
+      if (authError) throw authError;
+      if (!authData.user) throw new Error("Erreur lors de la création de l'utilisateur");
+
+      // 2. Création du profil utilisateur
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .insert([
+          {
+            id: authData.user.id,
+            full_name: formData.name,
+            role: formData.role,
+            cip_number: formData.role === 'SUPER_ADMIN' ? formData.cipNumber : null,
+            // school_id serait normalement géré ici si on avait une sélection d'école existante
+          }
+        ]);
+
+      if (profileError) throw profileError;
+
+      // Note: Le téléchargement du document justificatif dans Storage pourrait être ajouté ici
+      
+      setStep(4); // Succès
+    } catch (err: any) {
+      console.error('Erreur inscription:', err);
+      setError(err.message || "Une erreur est survenue lors de l'inscription.");
+    } finally {
       setIsLoading(false);
-      if (formData.role === 'SUPER_ADMIN' && formData.cipNumber) {
-        localStorage.setItem('registeredCIP', formData.cipNumber);
-      }
-      setStep(4); // Success step
-    }, 2000);
+    }
   };
 
   const selectedDept = BENIN_LOCATIONS.find(d => d.department === formData.department);
