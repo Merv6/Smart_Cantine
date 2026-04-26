@@ -78,12 +78,14 @@ export default function Register() {
 
     try {
       // 1. Authentification Supabase (SignUp)
+      // On passe le nom et le rôle dans les metadata pour que le trigger puisse les utiliser
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
         options: {
           data: {
             full_name: formData.name,
+            role: formData.role,
           }
         }
       });
@@ -91,20 +93,16 @@ export default function Register() {
       if (authError) throw authError;
       if (!authData.user) throw new Error("Erreur lors de la création de l'utilisateur");
 
-      // 2. Création du profil utilisateur
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .insert([
-          {
-            id: authData.user.id,
-            full_name: formData.name,
-            role: formData.role,
-            cip_number: formData.role === 'SUPER_ADMIN' ? formData.cipNumber : null,
-            // school_id serait normalement géré ici si on avait une sélection d'école existante
-          }
-        ]);
-
-      if (profileError) throw profileError;
+      // 2. Mise à jour complémentaire (si admin, on ajoute le CIP)
+      // Le profil a déjà été créé par le trigger, on fait juste un update si nécessaire
+      if (formData.role === 'SUPER_ADMIN' && formData.cipNumber) {
+        const { error: updateError } = await supabase
+          .from('profiles')
+          .update({ cip_number: formData.cipNumber })
+          .eq('id', authData.user.id);
+        
+        if (updateError) console.warn("Erreur mise à jour CIP:", updateError);
+      }
 
       // Note: Le téléchargement du document justificatif dans Storage pourrait être ajouté ici
       
