@@ -77,8 +77,8 @@ export default function Register() {
     setError('');
 
     try {
+      console.log('Début de l\'inscription pour:', formData.email);
       // 1. Authentification Supabase (SignUp)
-      // On passe le nom et le rôle dans les metadata pour que le trigger puisse les utiliser
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
@@ -90,26 +90,34 @@ export default function Register() {
         }
       });
 
-      if (authError) throw authError;
-      if (!authData.user) throw new Error("Erreur lors de la création de l'utilisateur");
+      if (authError) {
+        console.error('Erreur SignUp:', authError);
+        throw new Error(authError.message);
+      }
+      
+      if (!authData.user) throw new Error("Échec de la création de l'utilisateur.");
+
+      console.log('Utilisateur créé avec succès, ID:', authData.user.id);
 
       // 2. Mise à jour complémentaire (si admin, on ajoute le CIP)
-      // Le profil a déjà été créé par le trigger, on fait juste un update si nécessaire
       if (formData.role === 'SUPER_ADMIN' && formData.cipNumber) {
+        console.log('Mise à jour du CIP pour l\'admin...');
         const { error: updateError } = await supabase
           .from('profiles')
           .update({ cip_number: formData.cipNumber })
           .eq('id', authData.user.id);
         
-        if (updateError) console.warn("Erreur mise à jour CIP:", updateError);
+        if (updateError) {
+          console.warn("Remarque: Erreur lors de la mise à jour du CIP, mais le compte est créé.", updateError);
+        }
       }
 
-      // Note: Le téléchargement du document justificatif dans Storage pourrait être ajouté ici
-      
-      setStep(4); // Succès
+      console.log('Inscription terminée avec succès.');
+      setStep(4); // Passage à l'écran de succès
     } catch (err: any) {
-      console.error('Erreur inscription:', err);
+      console.error('Exception Inscription:', err);
       setError(err.message || "Une erreur est survenue lors de l'inscription.");
+      setIsLoading(false);
     } finally {
       setIsLoading(false);
     }

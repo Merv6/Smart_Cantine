@@ -30,8 +30,10 @@ export default function Login() {
     }
 
     setIsLoading(true);
+    setError('');
 
     try {
+      console.log('Tentative de connexion pour:', identifier.trim());
       // 1. Connexion Supabase
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: identifier.trim(),
@@ -39,19 +41,21 @@ export default function Login() {
       });
 
       if (authError) {
-        console.error('Supabase auth error:', authError);
+        console.error('Erreur Auth Supabase:', authError);
         if (authError.message === 'Invalid login credentials') {
-          throw new Error("Cet identifiant n'est pas reconnu ou le mot de passe est incorrect. Veuillez vérifier vos accès.");
+          throw new Error("Cet identifiant n'est pas reconnu ou le mot de passe est incorrect.");
         }
         if (authError.message.includes('Email not confirmed')) {
-          throw new Error("Votre adresse email n'a pas encore été confirmée. Veuillez vérifier votre boîte de réception.");
+          throw new Error("Votre email n'est pas encore confirmé. Vérifiez vos messages.");
         }
         throw new Error(authError.message);
       }
 
-      if (!authData.user) throw new Error("Une erreur inattendue est survenue lors de la connexion.");
+      if (!authData.user) throw new Error("Utilisateur non trouvé après connexion.");
 
-      // 2. Récupération du profil pour vérifier le rôle et le CIP
+      console.log('Utilisateur connecté, vérification du profil...');
+
+      // 2. Récupération du profil
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('*')
@@ -59,19 +63,22 @@ export default function Login() {
         .maybeSingle();
 
       if (profileError) {
-        console.error('Profile fetch error:', profileError);
+        console.error('Erreur Profil:', profileError);
         throw new Error("Erreur technique lors de la récupération du profil.");
       }
       
       if (!profile) {
+        console.warn('Profil manquant pour cet utilisateur');
         await supabase.auth.signOut();
-        throw new Error("Compte authentifié mais profil introuvable. Veuillez vérifier que votre inscription a été finalisée.");
+        throw new Error("Compte activé mais profil manquant. Veuillez vous réinscrire.");
       }
 
-      // 3. Vérification de la cohérence du rôle
+      console.log('Profil trouvé:', profile.role);
+
+      // 3. Vérification du rôle
       if (profile.role !== selectedRole) {
         await supabase.auth.signOut();
-        throw new Error(`Ce compte n'est pas enregistré en tant que ${selectedRole === 'SUPER_ADMIN' ? 'Administrateur' : selectedRole.toLowerCase()}.`);
+        throw new Error(`Ce compte est un ${profile.role}, pas un ${selectedRole}.`);
       }
 
       // 4. Validation CIP pour l'administrateur
@@ -84,10 +91,12 @@ export default function Login() {
 
       // Succès
       localStorage.setItem('userRole', profile.role);
+      console.log('Redirection vers dashboard...');
       navigate('/dashboard');
     } catch (err: any) {
-      console.error('Erreur login:', err);
-      setError(err.message || "Email ou mot de passe incorrect.");
+      console.error('Exception capturée:', err);
+      setError(err.message || "Impossible de se connecter.");
+      setIsLoading(false); // On s'assure d'arrêter le chargement ici aussi
     } finally {
       setIsLoading(false);
     }
