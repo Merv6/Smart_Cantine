@@ -1,0 +1,6 @@
+{
+  "name": "SmartCantine",
+  "description": "Plateforme intelligente de gestion des cantines scolaires en milieu rural au Bénin pour assurer la transparence et lutter contre l'abandon scolaire.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["AI-powered inventory management", "Real-time stock tracking", "Daily meal reporting"]
+}
