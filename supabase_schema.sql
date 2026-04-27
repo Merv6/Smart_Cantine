@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   role TEXT CHECK (role IN ('SUPER_ADMIN', 'DIRECTOR', 'COOK')),
   cip_number TEXT,
   school_id UUID,
+  is_validated BOOLEAN DEFAULT false,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
@@ -47,11 +48,12 @@ $$ LANGUAGE sql SECURITY DEFINER;
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.profiles (id, full_name, role)
+  INSERT INTO public.profiles (id, full_name, role, is_validated)
   VALUES (
     NEW.id,
-    NEW.raw_user_meta_data->>'full_name',
-    COALESCE(NEW.raw_user_meta_data->>'role', 'DIRECTOR')
+    COALESCE(NEW.raw_user_meta_data->>'full_name', ''),
+    NEW.raw_user_meta_data->>'role', -- Sera NULL si non fourni lors de l'enregistrement simple
+    COALESCE((NEW.raw_user_meta_data->>'is_validated')::boolean, false)
   );
   RETURN NEW;
 END;

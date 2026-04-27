@@ -16,13 +16,33 @@ import {
   Loader2,
   Trash2,
   Camera,
-  Users
+  Users,
+  Utensils,
+  User,
+  School
 } from 'lucide-react';
 import { Button, Input } from '../ui';
 import { motion, AnimatePresence } from 'motion/react';
 
-export default function DirectorDash() {
-  const [view, setView] = React.useState<'overview' | 'inventory' | 'canteen' | 'settings' | 'register' | 'register_cook' | 'validate_meals'>('overview');
+export default function DirectorDash({ 
+  isValidated, 
+  initialView = 'overview',
+  onViewChange
+}: { 
+  isValidated: boolean;
+  initialView?: 'overview' | 'inventory' | 'canteen' | 'settings' | 'profile' | 'register' | 'register_cook' | 'validate_meals';
+  onViewChange?: (view: any) => void;
+}) {
+  const [view, setView] = React.useState(initialView);
+
+  React.useEffect(() => {
+    setView(initialView);
+  }, [initialView]);
+
+  const handleSetView = (newView: any) => {
+    setView(newView);
+    if (onViewChange) onViewChange(newView);
+  };
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [isPending, setIsPending] = React.useState(false);
   const [isSuccess, setIsSuccess] = React.useState(false);
@@ -365,10 +385,20 @@ export default function DirectorDash() {
             <p className="text-slate-500">EPP Godomey Centre • Atlantique</p>
           </div>
           <div className="flex gap-3 flex-wrap">
-            <Button onClick={() => setView('register')} variant="secondary" className="rounded-xl font-bold flex items-center gap-2">
+            <Button 
+              disabled={!isValidated}
+              onClick={() => setView('register')} 
+              variant="secondary" 
+              className={`rounded-xl font-bold flex items-center gap-2 ${!isValidated ? 'opacity-50 grayscale' : ''}`}
+            >
               <Plus size={18} /> Enregistrer des Vivres
             </Button>
-            <Button onClick={() => setView('register_cook')} variant="outline" className="rounded-xl border-slate-300 text-slate-700 font-bold flex items-center gap-2 hover:bg-slate-50">
+            <Button 
+              disabled={!isValidated}
+              onClick={() => setView('register_cook')} 
+              variant="outline" 
+              className={`rounded-xl border-slate-300 text-slate-700 font-bold flex items-center gap-2 hover:bg-slate-50 ${!isValidated ? 'opacity-50 grayscale' : ''}`}
+            >
               <Users size={18} /> Inscrire un Cuisinier
             </Button>
           </div>
@@ -380,7 +410,8 @@ export default function DirectorDash() {
             { id: 'overview', label: "Vue d'ensemble", icon: <PieIcon size={16} /> },
             { id: 'validate_meals', label: "Validation Repas", icon: <CheckCircle size={16} /> },
             { id: 'inventory', label: "Gestion des stocks", icon: <Package size={16} /> },
-            { id: 'canteen', label: "Ma Cantine", icon: <ChefHat size={16} /> },
+            { id: 'canteen', label: "Ma Cantine", icon: <Utensils size={16} /> },
+            { id: 'profile', label: "Mon Profil", icon: <User size={16} /> },
             { id: 'settings', label: "Paramètres", icon: <History size={16} /> },
           ].map((tab) => (
             <button
@@ -408,168 +439,124 @@ export default function DirectorDash() {
           transition={{ duration: 0.2 }}
         >
           {view === 'overview' && (
-            <div className="grid lg:grid-cols-12 gap-8">
-              {/* Main Content */}
-              <div className="lg:col-span-8 space-y-8">
-                {!dailyValidation.isValidated && (
-                  <motion.div 
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    className="bg-brand-orange/10 border border-brand-orange/20 p-6 rounded-3xl flex flex-col md:flex-row items-center justify-between gap-4"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-brand-orange text-white rounded-2xl flex items-center justify-center shadow-lg shadow-brand-orange/20">
-                        <Camera size={24} />
+            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
+              {/* Bento Grid Header */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+                <div className="md:col-span-8 bg-gradient-to-br from-brand-green to-emerald-600 rounded-[2.5rem] p-8 text-white relative overflow-hidden shadow-xl shadow-brand-green/20">
+                  <div className="relative z-10 space-y-6">
+                    <div className="bg-white/20 backdrop-blur-md w-fit px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest">Aujourd'hui • 27 Avril</div>
+                    <div className="space-y-1">
+                      <h2 className="text-3xl font-black font-display leading-tight">Bonjour, M. DOSSOU</h2>
+                      <p className="text-emerald-50 opacity-90 max-w-md font-medium">Tout est en ordre à l'EPP Godomey Centre. 420 élèves attendent leur repas.</p>
+                    </div>
+                    <div className="flex gap-4 pt-4">
+                      <div className="bg-white/10 backdrop-blur-sm p-4 rounded-3xl border border-white/10 flex-1">
+                        <div className="text-[10px] font-black text-emerald-100 uppercase mb-1">Repas du jour</div>
+                        <div className="font-bold">Riz sauce arachide</div>
                       </div>
-                      <div>
-                        <h4 className="text-sm font-black text-slate-800 uppercase">Validation Requise</h4>
-                        <p className="text-xs text-slate-500 font-bold">Le cuisinier a envoyé les photos du repas de ce midi.</p>
+                      <div className="bg-white/10 backdrop-blur-sm p-4 rounded-3xl border border-white/10 flex-1">
+                        <div className="text-[10px] font-black text-emerald-100 uppercase mb-1">Heure de service</div>
+                        <div className="font-bold">12:30 - 13:45</div>
                       </div>
                     </div>
-                    <Button onClick={() => setView('validate_meals')} size="sm" className="bg-brand-orange rounded-xl font-bold px-6">Vérifier maintenant</Button>
-                  </motion.div>
-                )}
-
-                {/* Stats Summary */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-                    <div className="text-slate-400 font-bold text-[10px] uppercase mb-2">Repas servis (Mois)</div>
-                    <div className="text-2xl font-black text-slate-800">12,450</div>
-                    <div className="text-xs text-emerald-500 font-bold mt-1 flex items-center gap-1">
-                      <TrendingDown size={14} className="rotate-180" /> +12% vs mois dernier
-                    </div>
                   </div>
-                  <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-                    <div className="text-slate-400 font-bold text-[10px] uppercase mb-2">Valeur du Stock</div>
-                    <div className="text-2xl font-black text-slate-800">842,000 FCFA</div>
-                    <div className="text-xs text-slate-400 font-bold mt-1 uppercase tracking-tighter">Mise à jour aujourd'hui</div>
-                  </div>
-                  <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-                    <div className="text-slate-400 font-bold text-[10px] uppercase mb-2">Alertes critiques</div>
-                    <div className="text-2xl font-black text-brand-orange">02</div>
-                    <div className="text-xs text-brand-orange font-bold mt-1 uppercase">Action requise</div>
-                  </div>
+                  <Utensils className="absolute -bottom-10 -right-10 w-64 h-64 text-white/5 -rotate-12" />
                 </div>
 
-                <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-                  <div className="p-8 border-b border-slate-50 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Package className="text-brand-green" />
-                      <h3 className="text-lg">Aperçu de l'Inventaire</h3>
+                <div className="md:col-span-4 bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm flex flex-col justify-between">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-black text-slate-800 uppercase text-xs tracking-widest">Alertes de Stock</h3>
+                      <div className="w-2 h-2 bg-brand-orange rounded-full animate-ping" />
                     </div>
-                    <Button onClick={() => setView('inventory')} variant="ghost" size="sm" className="text-brand-green font-bold text-xs uppercase tracking-wider">Gérer le stock</Button>
-                  </div>
-                  <div className="divide-y divide-slate-50">
-                    {inventory.slice(0, 3).map((item, i) => (
-                      <div key={i} className="px-8 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => setView('inventory')}>
-                        <div className="flex items-center gap-4">
-                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold ${
-                            item.status === 'optimal' ? 'bg-emerald-50 text-emerald-600' : 
-                            item.status === 'warning' ? 'bg-amber-50 text-amber-600' : 'bg-red-50 text-red-600'
-                          }`}>
-                            {item.name[0]}
-                          </div>
-                          <div>
-                            <div className="font-bold text-slate-800">{item.name}</div>
-                            <div className="text-[10px] font-bold uppercase text-slate-400">Dernier arrivé: il y a 3 jours</div>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-lg font-black text-slate-800">{item.quantity} {item.unit}</div>
-                          <div className={`text-[10px] font-bold uppercase ${
-                            item.status === 'optimal' ? 'text-emerald-500' : 'text-brand-orange'
-                          }`}>
-                             {item.status === 'optimal' ? 'Stable' : 'Faible'}
-                          </div>
-                        </div>
+                    <div className="space-y-3">
+                      <div className="p-4 bg-red-50 rounded-2xl border border-red-100">
+                        <div className="text-[10px] font-black text-red-500 uppercase mb-1">Stock Critique</div>
+                        <div className="font-bold text-slate-800 text-sm">Maïs: 80kg restant</div>
+                        <div className="text-xs text-red-400 font-medium">Autonomie: 2 jours</div>
                       </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Cooks Section */}
-                <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm">
-                  <div className="flex items-center justify-between mb-8">
-                    <div className="flex items-center gap-3">
-                      <ChefHat className="text-brand-orange" />
-                      <h3 className="text-lg font-bold">Équipe de Cuisine</h3>
+                      <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100">
+                        <div className="text-[10px] font-black text-amber-600 uppercase mb-1">Alerte</div>
+                        <div className="font-bold text-slate-800 text-sm">Huile: 15L restant</div>
+                      </div>
                     </div>
-                    <Button onClick={() => setView('canteen')} variant="ghost" size="sm" className="text-brand-orange font-bold text-xs uppercase tracking-wider">Voir tout</Button>
                   </div>
-                  <div className="grid sm:grid-cols-2 gap-4">
-                    {[
-                      { name: "Adama Traoré", role: "Chef Cuisinière", status: "Présente" },
-                      { name: "Mariam Bello", role: "Assistante", status: "Présente" },
-                    ].map((cook, i) => (
-                      <div key={i} className="p-4 rounded-2xl border border-slate-100 bg-slate-50 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-white rounded-full border border-slate-200 flex items-center justify-center font-bold text-slate-400">
-                            {cook.name[0]}
-                          </div>
-                          <div>
-                            <div className="text-sm font-bold text-slate-800">{cook.name}</div>
-                            <div className="text-[10px] text-slate-400 font-bold uppercase">{cook.role}</div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-500 bg-emerald-50 px-2 py-1 rounded-lg uppercase">
-                          <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-                          {cook.status}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  <Button onClick={() => setView('inventory')} variant="ghost" className="w-full text-brand-green font-black uppercase text-[10px] tracking-widest hover:bg-brand-green/5">Gérer les stocks <ChevronRight size={14} className="ml-1" /></Button>
                 </div>
               </div>
 
-              {/* Sidebar */}
-              <div className="lg:col-span-4 space-y-8">
-                <div className="bg-brand-green/5 p-8 rounded-3xl border border-brand-green/10">
-                   <h3 className="text-lg text-brand-green font-bold mb-6">Alertes de Stock</h3>
-                   <div className="space-y-4">
-                      <div className="bg-white p-4 rounded-2xl border border-red-100 shadow-sm space-y-3">
-                        <div className="flex items-center gap-2 text-red-500 text-xs font-black uppercase">
-                          <AlertCircle size={14} /> Stock Critique
-                        </div>
-                        <p className="text-xs text-slate-600 leading-relaxed font-bold">Le stock de Maïs (80kg) ne permet de tenir que 2 jours supplémentaires.</p>
-                        <Button className="w-full text-[10px] py-3 rounded-lg" size="sm" variant="secondary">Commander Maintenant</Button>
-                      </div>
-                   </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Monthly Stats */}
+                <div className="md:col-span-2 bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm space-y-8">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xl font-bold font-display">Performance Mensuelle</h3>
+                    <select className="bg-slate-50 border-none rounded-xl px-4 py-2 text-xs font-bold outline-none">
+                      <option>Avril 2026</option>
+                      <option>Mars 2026</option>
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div className="space-y-2">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Repas</div>
+                      <div className="text-3xl font-black text-slate-800">12,450</div>
+                      <div className="text-[10px] text-emerald-500 font-black">+14%</div>
+                    </div>
+                    <div className="space-y-2">
+                       <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Taux Participation</div>
+                       <div className="text-3xl font-black text-slate-800">98.2%</div>
+                       <div className="text-[10px] text-emerald-500 font-black">Stable</div>
+                    </div>
+                    <div className="space-y-2">
+                       <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Vivres Reçus</div>
+                       <div className="text-3xl font-black text-slate-800">2.4<span className="text-sm">t</span></div>
+                       <div className="text-[10px] text-blue-500 font-black">Livré le 12/04</div>
+                    </div>
+                    <div className="space-y-2">
+                       <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Budget Économisé</div>
+                       <div className="text-3xl font-black text-slate-800">52k</div>
+                       <div className="text-[10px] text-emerald-500 font-black">Réduction pertes</div>
+                    </div>
+                  </div>
+                  <div className="h-2 bg-slate-50 rounded-full overflow-hidden">
+                    <div className="h-full bg-brand-green w-[75%]" />
+                  </div>
                 </div>
 
-                {/* Notifications & Recent Activity */}
-                <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm flex flex-col gap-6">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-bold">Messages & Notifications</h3>
-                    <div className="w-5 h-5 bg-brand-orange text-white rounded-full flex items-center justify-center text-[10px] font-black">1</div>
-                  </div>
+                {/* Quick Validation Area */}
+                <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white flex flex-col justify-between shadow-xl shadow-slate-900/10">
                   <div className="space-y-6">
-                    <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100 flex gap-4">
-                      <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shrink-0">
-                        <CheckCircle className="text-emerald-500" size={16} />
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-brand-orange rounded-2xl flex items-center justify-center shadow-lg shadow-brand-orange/20">
+                        <Camera size={20} />
                       </div>
-                      <div>
-                        <div className="text-sm font-bold text-slate-800">Stock Approuvé</div>
-                        <p className="text-xs text-slate-600 mt-1">Le Super Admin a validé votre réception de 500kg de Riz. Vos stocks ont été mis à jour.</p>
-                        <div className="text-[10px] text-slate-400 font-bold mt-2 uppercase">Il y a 15 minutes</div>
-                      </div>
+                      <h3 className="font-bold text-lg">Validation Rapide</h3>
                     </div>
-
-                    {[
-                      { title: "Rapport journalier validé", time: "Il y a 10 min", icon: <CheckCircle className="text-emerald-500" size={16} /> },
-                      { title: "Alerte: Stock bas (Maïs)", time: "Hier, 17:30", icon: <AlertCircle className="text-brand-orange" size={16} /> },
-                    ].map((act, i) => (
-                      <div key={i} className="flex gap-4 px-2">
-                        <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center shrink-0">
-                          {act.icon}
+                    <div className="space-y-4">
+                      {!dailyValidation.isValidated ? (
+                        <>
+                          <p className="text-sm text-slate-400 font-medium leading-relaxed">Les photos du service de ce midi ont été transmises par le cuisinier.</p>
+                          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center justify-between">
+                            <div className="text-xs font-bold text-slate-300">2 Photos reçues</div>
+                            <div className="flex -space-x-2">
+                              {dailyValidation.photos.map((p, i) => (
+                                <img key={i} src={p} className="w-6 h-6 rounded-full border border-slate-900 object-cover" />
+                              ))}
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 text-center">
+                          <CheckCircle className="text-emerald-500 mx-auto mb-2" size={24} />
+                          <div className="text-sm font-bold text-emerald-400">Repas Validé</div>
                         </div>
-                        <div>
-                          <div className="text-sm font-bold text-slate-800">{act.title}</div>
-                          <div className="text-[10px] text-slate-400 font-medium">{act.time}</div>
-                        </div>
-                      </div>
-                    ))}
+                      )}
+                    </div>
                   </div>
-                  <Button variant="outline" size="sm" className="w-full rounded-xl">Voir tout</Button>
+                  {!dailyValidation.isValidated && (
+                    <Button onClick={() => setView('validate_meals')} className="w-full bg-brand-orange hover:bg-brand-orange/90 rounded-2xl py-6 font-black uppercase text-xs tracking-widest">
+                      Vérifier preuves
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>
@@ -628,8 +615,9 @@ export default function DirectorDash() {
 
                     <div className="pt-6 border-t border-slate-100 flex gap-4">
                       <Button 
+                        disabled={!isValidated}
                         variant="ghost" 
-                        className="flex-1 rounded-2xl h-14 font-black uppercase text-xs tracking-widest text-red-500 hover:bg-red-50"
+                        className="flex-1 rounded-2xl h-14 font-black uppercase text-xs tracking-widest text-red-500 hover:bg-red-50 disabled:bg-slate-50 disabled:text-slate-300"
                         onClick={() => {
                           alert('Demande de modification envoyée au cuisinier.');
                           setView('overview');
@@ -638,9 +626,14 @@ export default function DirectorDash() {
                          Signaler erreur
                       </Button>
                       <Button 
+                        disabled={!isValidated}
                         isLoading={isSubmitting}
                         onClick={handleValidation}
-                        className="flex-[2] rounded-2xl h-14 bg-brand-green hover:bg-brand-green/90 shadow-xl shadow-brand-green/20 font-black uppercase text-xs tracking-widest"
+                        className={`flex-[2] rounded-2xl h-14 shadow-xl font-black uppercase text-xs tracking-widest ${
+                          isValidated 
+                          ? 'bg-brand-green hover:bg-brand-green/90 shadow-brand-green/20' 
+                          : 'bg-slate-300 text-white shadow-none cursor-not-allowed'
+                        }`}
                       >
                          Valider le rapport <CheckCircle className="ml-2" size={18} />
                       </Button>
@@ -651,55 +644,107 @@ export default function DirectorDash() {
           )}
 
           {view === 'inventory' && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
-              <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-                <div className="p-8 border-b border-slate-50 flex items-center justify-between">
-                  <div>
-                    <h3 className="text-xl font-bold">Gestion Détaillée des Stocks</h3>
-                    <p className="text-sm text-slate-500">Mise à jour en temps réel selon les rapports des cuisiniers.</p>
-                  </div>
-                  <Button onClick={() => setView('register')} size="sm" className="hidden md:flex rounded-xl font-bold gap-2">
-                    <Plus size={16} /> Nouvel Arrivage
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="relative flex-1 max-w-md">
+                  <Package className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                  <input 
+                    type="text" 
+                    placeholder="Rechercher un produit..." 
+                    className="w-full pl-12 pr-4 h-12 rounded-2xl border border-slate-200 bg-white shadow-sm focus:ring-2 focus:ring-brand-green/20 outline-none"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <select className="px-4 h-12 rounded-2xl border border-slate-200 bg-white shadow-sm text-sm font-bold outline-none">
+                    <option>Tous les états</option>
+                    <option>Critique</option>
+                    <option>Avertissement</option>
+                    <option>Stable</option>
+                  </select>
+                  <Button onClick={() => setView('register')} className="rounded-2xl h-12 font-bold gap-2">
+                    <Plus size={18} /> Nouvel Arrivage
                   </Button>
                 </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="bg-slate-50">
-                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Produit</th>
-                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Quantité</th>
-                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Unité</th>
-                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">État</th>
-                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-50">
-                      {inventory.map((item, i) => (
-                        <tr key={i} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="px-8 py-5">
-                            <div className="font-bold text-slate-800">{item.name}</div>
-                          </td>
-                          <td className="px-8 py-5">
-                            <div className="text-lg font-black text-slate-800">{item.quantity}</div>
-                          </td>
-                          <td className="px-8 py-5">
-                            <div className="text-xs font-bold text-slate-400 uppercase">{item.unit}</div>
-                          </td>
-                          <td className="px-8 py-5">
-                            <div className={`inline-flex px-3 py-1 rounded-full text-[10px] font-black uppercase ${
-                              item.status === 'optimal' ? 'bg-emerald-100 text-emerald-600' : 
-                              item.status === 'warning' ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'
-                            }`}>
-                              {item.status}
-                            </div>
-                          </td>
-                          <td className="px-8 py-5">
-                            <button className="text-slate-400 hover:text-brand-green font-bold text-xs uppercase tracking-tighter">Détails</button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {inventory.map((item, i) => (
+                  <motion.div 
+                    key={i}
+                    whileHover={{ y: -4 }}
+                    className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4 flex flex-col justify-between"
+                  >
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-start">
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl font-black ${
+                          item.status === 'optimal' ? 'bg-emerald-50 text-emerald-600' : 
+                          item.status === 'warning' ? 'bg-amber-50 text-amber-600' : 'bg-red-50 text-red-600'
+                        }`}>
+                          {item.name[0]}
+                        </div>
+                        <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${
+                          item.status === 'optimal' ? 'bg-emerald-100 text-emerald-600' : 
+                          item.status === 'warning' ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'
+                        }`}>
+                          {item.status}
+                        </div>
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-slate-800 text-lg">{item.name}</h4>
+                        <div className="flex items-end gap-2 mt-1">
+                          <span className="text-2xl font-black text-slate-900">{item.quantity}</span>
+                          <span className="text-slate-400 font-bold mb-1 uppercase text-xs">{item.unit}</span>
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between text-[8px] font-black uppercase text-slate-400">
+                          <span>Niveau</span>
+                          <span>{item.status === 'optimal' ? '85' : item.status === 'warning' ? '40' : '15'}%</span>
+                        </div>
+                        <div className="h-1.5 bg-slate-50 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full ${
+                            item.status === 'optimal' ? 'bg-emerald-500' : 
+                            item.status === 'warning' ? 'bg-amber-500' : 'bg-red-500'
+                          }`} style={{ width: item.status === 'optimal' ? '85%' : item.status === 'warning' ? '40%' : '15%' }} />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="pt-4 border-t border-slate-50 flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-tighter">
+                      <span>Dernier arrivage</span>
+                      <span className="text-slate-600 font-black italic">12 Avril</span>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+
+              <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8">
+                <div className="flex items-center justify-between mb-8">
+                  <h3 className="text-xl font-bold font-display">Historique des Mouvements</h3>
+                  <Button variant="ghost" size="sm" className="text-brand-green font-bold">Voir tout l'historique</Button>
+                </div>
+                <div className="space-y-4">
+                  {[
+                    { type: 'IN', item: 'Riz', qty: '+500kg', date: 'Hier, 14:20', from: 'PAM', status: 'Validé' },
+                    { type: 'OUT', item: 'Mais', qty: '-45kg', date: 'Hier, 08:30', from: 'Cuisine', status: 'Enregistré' },
+                    { type: 'IN', item: 'Huile', qty: '+20L', date: '15/04, 10:15', from: 'DONS', status: 'Validé' },
+                  ].map((log, i) => (
+                    <div key={i} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                      <div className="flex items-center gap-4">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                          log.type === 'IN' ? 'bg-emerald-100 text-emerald-600' : 'bg-brand-orange/10 text-brand-orange'
+                        }`}>
+                          {log.type === 'IN' ? <TrendingDown className="rotate-180" size={18} /> : <TrendingDown size={18} />}
+                        </div>
+                        <div>
+                          <div className="font-bold text-slate-800">{log.item} <span className={log.type === 'IN' ? 'text-emerald-500' : 'text-brand-orange'}>{log.qty}</span></div>
+                          <div className="text-[10px] text-slate-400 font-bold uppercase">{log.from} • {log.date}</div>
+                        </div>
+                      </div>
+                      <div className="text-[10px] font-black text-slate-400 uppercase bg-white px-3 py-1 rounded-lg shadow-sm border border-slate-100">
+                        {log.status}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -707,50 +752,189 @@ export default function DirectorDash() {
 
           {view === 'canteen' && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
-              <div className="grid md:grid-cols-2 gap-8">
-                <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
-                  <h3 className="text-xl font-bold">Informations de l'Établissement</h3>
-                  <div className="space-y-4">
-                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                      <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">Nom de l'école</div>
-                      <div className="font-bold text-slate-800">EPP Godomey Centre (Groupe A)</div>
+              <div className="grid lg:grid-cols-12 gap-8">
+                {/* Left Column: Staff & School */}
+                <div className="lg:col-span-4 space-y-8">
+                  <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-6">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xl font-bold font-display">Personnel</h3>
+                      <Button onClick={() => setView('register_cook')} variant="ghost" size="sm" className="text-brand-orange">+ Ajouter</Button>
                     </div>
-                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                      <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">Effectif Total</div>
-                      <div className="font-bold text-slate-800">452 Élèves inscrits</div>
-                    </div>
-                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                      <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">Directeur Responsable</div>
-                      <div className="font-bold text-slate-800">M. Julien DOSSOU</div>
-                    </div>
-                  </div>
-                  <Button variant="outline" className="w-full rounded-xl font-bold">Modifier les informations</Button>
-                </div>
-
-                <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-xl font-bold">Personnel de Cuisine</h3>
-                    <Button onClick={() => setView('register_cook')} size="sm" variant="ghost" className="text-brand-green font-bold text-xs">+ Ajouter</Button>
-                  </div>
-                  <div className="space-y-4">
-                    {[
-                      { name: "Adama Traoré", phone: "97 00 11 22", email: "adama@cook.bj" },
-                      { name: "Mariam Bello", phone: "98 10 20 30", email: "mariam@cook.bj" },
-                    ].map((c, i) => (
-                      <div key={i} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center font-bold text-slate-300">
-                            {c.name[0]}
+                    <div className="space-y-3">
+                      {[
+                        { name: "Adama Traoré", phone: "97 00 11 22", health: "À jour", absence: 0 },
+                        { name: "Mariam Bello", phone: "98 10 20 30", health: "À jour", absence: 1 },
+                      ].map((c, i) => (
+                        <div key={i} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center font-bold text-slate-300 shadow-sm">
+                                {c.name[0]}
+                              </div>
+                              <div className="font-bold text-slate-800 text-sm">{c.name}</div>
+                            </div>
+                            <button className="text-slate-300 hover:text-brand-orange transition-colors"><X size={16} /></button>
                           </div>
-                          <div>
-                            <div className="font-bold text-slate-800">{c.name}</div>
-                            <div className="text-[10px] text-slate-400 font-bold">{c.phone}</div>
+                          <div className="flex justify-between text-[10px] font-black uppercase tracking-widest pt-2 border-t border-slate-100">
+                            <div className="text-slate-400">Carnet Santé: <span className="text-emerald-500">{c.health}</span></div>
+                            <div className="text-slate-400">Absences: <span className="text-brand-orange">{c.absence}</span></div>
                           </div>
                         </div>
-                        <button className="text-slate-300 hover:text-brand-orange"><X size={16} /></button>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
+
+                  <div className="bg-brand-green/5 p-6 rounded-[2.5rem] border border-brand-green/10 space-y-6">
+                    <h3 className="text-lg font-bold text-brand-green font-display flex items-center gap-2">
+                      <School size={20} /> Infos École
+                    </h3>
+                    <div className="space-y-4">
+                      <div className="p-4 bg-white rounded-2xl border border-brand-green/10 shadow-sm">
+                        <div className="text-[10px] font-black text-slate-400 uppercase mb-1">Localisation</div>
+                        <p className="text-sm font-bold text-slate-700 leading-tight">Abomey-Calavi, Godomey Centre (Groupe A)</p>
+                      </div>
+                      <div className="p-4 bg-white rounded-2xl border border-brand-green/10 shadow-sm">
+                        <div className="text-[10px] font-black text-slate-400 uppercase mb-1">Capacité & Effectif</div>
+                        <p className="text-sm font-bold text-slate-700">452 Élèves / 500 Places</p>
+                      </div>
+                      <div className="p-4 bg-white rounded-2xl border border-brand-green/10 shadow-sm">
+                        <div className="text-[10px] font-black text-slate-400 uppercase mb-1">Prochaine Inspection</div>
+                        <div className="flex items-center gap-2">
+                          <Clock size={14} className="text-brand-orange" />
+                          <p className="text-sm font-bold text-brand-orange italic">Dans 14 jours</p>
+                        </div>
+                      </div>
+                    </div>
+                    <Button variant="ghost" size="sm" className="w-full text-brand-green font-bold text-[10px] uppercase tracking-widest">Modifier Infos École</Button>
+                  </div>
+                </div>
+
+                {/* Right Column: Menu & Planning */}
+                <div className="lg:col-span-8 space-y-8">
+                  <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+                    <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-brand-orange/5">
+                      <div>
+                        <h3 className="text-xl font-bold font-display">Menu de la Semaine</h3>
+                        <p className="text-xs text-slate-500 uppercase font-black tracking-widest mt-1">Avril: Semaine 4</p>
+                      </div>
+                      <Button variant="outline" size="sm" className="rounded-xl border-brand-orange text-brand-orange hover:bg-brand-orange/10 font-bold">Modifier Menu</Button>
+                    </div>
+                    <div className="grid grid-cols-1 divide-y divide-slate-50">
+                      {[
+                        { day: 'Lundi', dish: 'Riz sauce arachide + Poisson', kcal: '450', color: 'bg-emerald-500' },
+                        { day: 'Mardi', dish: 'Pâte de maïs sauce légumes + Fromage', kcal: '420', color: 'bg-amber-500' },
+                        { day: 'Mercredi', dish: 'Haricot vert + Gari + Huile de palme', kcal: '480', color: 'bg-brand-orange' },
+                        { day: 'Jeudi', dish: 'Couscous de maïs + Sauce tomate', kcal: '440', color: 'bg-blue-500' },
+                        { day: 'Vendredi', dish: 'Riz gras au poulet', kcal: '500', color: 'bg-brand-green' },
+                      ].map((m, i) => (
+                        <div key={i} className="flex items-center gap-6 p-6 hover:bg-slate-50 transition-colors">
+                          <div className={`w-14 h-14 rounded-2xl flex flex-col items-center justify-center shrink-0 text-white ${m.color} shadow-lg shadow-current/20`}>
+                            <span className="text-[10px] font-black uppercase">{m.day.slice(0, 3)}</span>
+                          </div>
+                          <div className="flex-1">
+                             <div className="text-sm font-black text-slate-800 uppercase tracking-tight">{m.day}</div>
+                             <div className="text-lg font-bold text-slate-600">{m. dish}</div>
+                          </div>
+                          <div className="text-right">
+                             <div className="text-sm font-black text-brand-orange">{m.kcal} kcal</div>
+                             <div className="text-[10px] font-bold text-slate-400 uppercase">Portion moy.</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
+                      <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-500">
+                        <Users size={24} />
+                      </div>
+                      <div>
+                        <div className="text-2xl font-black text-slate-800">452</div>
+                        <div className="text-[10px] font-black text-slate-400 uppercase">Élèves inscrits</div>
+                      </div>
+                    </div>
+                    <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
+                      <div className="w-12 h-12 bg-brand-green/10 rounded-2xl flex items-center justify-center text-brand-green">
+                        <Utensils size={24} />
+                      </div>
+                      <div>
+                        <div className="text-2xl font-black text-slate-800">420</div>
+                        <div className="text-[10px] font-black text-slate-400 uppercase">Moyenne repas/jour</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {view === 'profile' && (
+            <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4">
+              <div className="relative h-48 bg-gradient-to-r from-brand-green to-emerald-500 rounded-[2.5rem] overflow-hidden -mb-12">
+                <Utensils className="absolute -top-10 -right-10 w-64 h-64 text-white/10" />
+                <div className="absolute inset-0 bg-black/10" />
+              </div>
+              <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-xl p-8 relative z-10">
+                <div className="flex flex-col md:flex-row items-center gap-8 -mt-20 md:-mt-16 mb-8">
+                  <div className="relative group">
+                    <div className="w-32 h-32 rounded-[2rem] bg-slate-100 border-4 border-white shadow-xl flex items-center justify-center text-4xl font-black text-slate-300">
+                      JD
+                    </div>
+                    <button className="absolute -bottom-2 -right-2 w-10 h-10 bg-brand-green text-white rounded-2xl border-4 border-white shadow-lg flex items-center justify-center hover:scale-110 transition-transform">
+                      <Camera size={16} />
+                    </button>
+                  </div>
+                  <div className="text-center md:text-left space-y-2 mt-4 md:mt-0">
+                    <h2 className="text-3xl font-black font-display text-slate-800">Julien DOSSOU</h2>
+                    <div className="flex flex-wrap justify-center md:justify-start gap-2">
+                      <span className="px-3 py-1 bg-brand-green/10 text-brand-green rounded-full text-[10px] font-black uppercase">Directeur d'Établissement</span>
+                      <span className="px-3 py-1 bg-slate-100 text-slate-500 rounded-full text-[10px] font-black uppercase">ID: SC-2024-001</span>
+                    </div>
+                  </div>
+                  <div className="md:ml-auto flex gap-3">
+                    <Button variant="outline" className="rounded-2xl h-12 font-bold">Modifier Infos</Button>
+                    <Button className="bg-brand-orange hover:bg-brand-orange/90 rounded-2xl h-12 font-bold px-8 shadow-lg shadow-brand-orange/20">Aide & Support</Button>
+                  </div>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-8">
+                  <div className="space-y-6">
+                    <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest pl-1 border-l-4 border-brand-green">Informations de Contact</h3>
+                    <div className="grid gap-4">
+                      <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                        <div className="text-[10px] font-black text-slate-400 uppercase mb-1">Email Professionnel</div>
+                        <div className="font-bold text-slate-800">j.dossou@ecole.bj</div>
+                      </div>
+                      <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                        <div className="text-[10px] font-black text-slate-400 uppercase mb-1">Téléphone</div>
+                        <div className="font-bold text-slate-800">+229 97 00 00 00</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="space-y-6">
+                    <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest pl-1 border-l-4 border-brand-orange">Détails Établissement</h3>
+                    <div className="grid gap-4">
+                      <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                        <div className="text-[10px] font-black text-slate-400 uppercase mb-1">École Affectée</div>
+                        <div className="font-bold text-slate-800">EPP Godomey Centre (Groupe A)</div>
+                      </div>
+                      <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                        <div className="text-[10px] font-black text-slate-400 uppercase mb-1">Ancienneté</div>
+                        <div className="font-bold text-slate-800">Assigné le 12 Septembre 2023</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-12 pt-8 border-t border-slate-50">
+                   <div className="flex items-center justify-between mb-6">
+                     <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest">Ma Signature Numérique</h3>
+                     <Button variant="ghost" size="sm" className="text-brand-green font-bold">Mettre à jour</Button>
+                   </div>
+                   <div className="aspect-[4/1] md:w-64 bg-slate-50 rounded-3xl border border-dashed border-slate-200 flex items-center justify-center text-slate-300 font-display italic text-2xl font-black">
+                      J. Dossou
+                   </div>
                 </div>
               </div>
             </div>
@@ -758,33 +942,47 @@ export default function DirectorDash() {
 
           {view === 'settings' && (
             <div className="max-w-2xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4">
-               <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-8">
-                 <h3 className="text-xl font-bold">Paramètres du Compte</h3>
+               <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-8">
+                 <div className="space-y-1">
+                   <h3 className="text-2xl font-black font-display text-slate-800">Paramètres</h3>
+                   <p className="text-sm text-slate-500">Configurez votre application et vos préférences d'école.</p>
+                 </div>
                  
                  <div className="space-y-6">
                     <div className="space-y-4">
-                      <h4 className="text-xs font-black uppercase text-slate-400 tracking-widest pl-1">Sécurité</h4>
-                      <Button variant="outline" className="w-full rounded-xl justify-between h-14 px-6 border-slate-200">
-                        Modifier le mot de passe <ChevronRight size={18} className="text-slate-300" />
+                      <h4 className="text-xs font-black uppercase text-slate-400 tracking-widest pl-1 border-l-4 border-brand-green">Configuration École</h4>
+                      <Button variant="outline" className="w-full rounded-2xl justify-between h-14 px-6 border-slate-200 group">
+                        Seuil d'alerte critique (Actuel: 5 jours) <ChevronRight size={18} className="text-slate-300 group-hover:text-brand-green transition-colors" />
                       </Button>
-                      <Button variant="outline" className="w-full rounded-xl justify-between h-14 px-6 border-slate-200">
-                        Identification (Biométrie/PIN) <ChevronRight size={18} className="text-slate-300" />
+                      <Button variant="outline" className="w-full rounded-2xl justify-between h-14 px-6 border-slate-200 group">
+                        Horaires de service des repas <ChevronRight size={18} className="text-slate-300 group-hover:text-brand-green transition-colors" />
                       </Button>
                     </div>
 
                     <div className="space-y-4">
-                      <h4 className="text-xs font-black uppercase text-slate-400 tracking-widest pl-1">Préférences</h4>
-                      <div className="flex items-center justify-between p-6 border border-slate-100 rounded-2xl">
-                         <div className="text-sm font-bold text-slate-700">Notifications Push (Alertes Stock)</div>
-                         <div className="w-11 h-6 bg-brand-green rounded-full relative">
-                            <div className="absolute right-1 top-1 w-4 h-4 bg-white rounded-full shadow-sm" />
-                         </div>
+                      <h4 className="text-xs font-black uppercase text-slate-400 tracking-widest pl-1 border-l-4 border-brand-orange">Notifications Push</h4>
+                      <div className="space-y-3">
+                        {[
+                          { label: 'Alertes stock critique', desc: 'Notification instantanée si un produit passe sous le seuil.', active: true },
+                          { label: 'Validation des repas', desc: 'Rappel quotidien si les photos ne sont pas validées à 14h.', active: true },
+                          { label: 'Rapports hebdomadaires', desc: 'Résumé par email chaque vendredi soir.', active: false },
+                        ].map((pref, i) => (
+                          <div key={i} className="flex items-center justify-between p-6 bg-slate-50/50 rounded-3xl border border-slate-100">
+                             <div>
+                                <div className="text-sm font-bold text-slate-800">{pref.label}</div>
+                                <div className="text-[10px] text-slate-400 font-medium">{pref.desc}</div>
+                             </div>
+                             <div className={`w-12 h-6 rounded-full relative transition-colors cursor-pointer ${pref.active ? 'bg-brand-green' : 'bg-slate-200'}`}>
+                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-md transition-all ${pref.active ? 'right-1' : 'left-1'}`} />
+                             </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
 
-                    <div className="pt-4 border-t border-slate-50 space-y-4">
-                      <Button variant="danger" className="w-full rounded-xl font-bold h-14">Déconnexion</Button>
-                      <p className="text-[10px] text-center text-slate-400 font-medium">Application version 1.0.4 • © 2024 Cantine-Connect</p>
+                    <div className="pt-8 border-t border-slate-50 space-y-4">
+                      <Button variant="danger" className="w-full rounded-2xl font-black h-14 uppercase text-xs tracking-widest">Déconnexion</Button>
+                      <p className="text-[10px] text-center text-slate-400 font-medium">Application version 1.0.4 • © 2026 Cantine-Connect</p>
                     </div>
                  </div>
                </div>

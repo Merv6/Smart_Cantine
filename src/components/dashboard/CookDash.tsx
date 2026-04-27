@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { Button, Input } from '../ui';
 
-export default function CookDash() {
+export default function CookDash({ isValidated }: { isValidated: boolean }) {
   const [step, setStep] = React.useState(1);
   const [isLoading, setIsLoading] = React.useState(false);
   const [isSuccess, setIsSuccess] = React.useState(false);
@@ -187,9 +187,9 @@ export default function CookDash() {
                       )}
 
                       <Button 
+                        disabled={!isValidated || !isStep1Valid}
                         onClick={() => setStep(2)} 
-                        className="w-full rounded-xl py-6"
-                        disabled={!isStep1Valid}
+                        className={`w-full rounded-xl py-6 ${!isValidated ? 'bg-slate-300 text-white cursor-not-allowed shadow-none' : ''}`}
                       >
                         Suivant <ArrowRight className="ml-2" size={18} />
                       </Button>

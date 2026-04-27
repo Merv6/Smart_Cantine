@@ -14,7 +14,9 @@ import {
   Eye,
   Check,
   X,
-  File
+  File,
+  Loader2,
+  Trash2
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -32,6 +34,7 @@ import {
 } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from '../ui';
+import { supabase } from '../../lib/supabase';
 
 const data = [
   { name: 'Jan', meals: 4000 },
@@ -66,9 +69,12 @@ const deptStats = [
   { name: 'Ouémé', schools: 29, pupils: 4000, meals: '55k' },
 ];
 
-export default function AdminDash() {
+export default function AdminDash({ isValidated }: { isValidated: boolean }) {
   const [activeTab, setActiveTab] = React.useState<'overview' | 'validations'>('overview');
   const [showNewSchoolModal, setShowNewSchoolModal] = React.useState(false);
+  const [isLoadingUsers, setIsLoadingUsers] = React.useState(false);
+  const [isProcessing, setIsProcessing] = React.useState<string | null>(null);
+  
   const [newSchool, setNewSchool] = React.useState({
     name: '',
     department: '',
@@ -77,13 +83,31 @@ export default function AdminDash() {
     director: ''
   });
   
-  const [pendingDirectors, setPendingDirectors] = React.useState([
-    { id: 1, name: "Koffi Mensah", school: "EPP Cotonou Est", dept: "Littoral", date: "24/04/2026", docs: ["Certificat.pdf", "CNI_Recto.pdf"] },
-    { id: 2, name: "Sika Ayaba", school: "EPP Godomey Sud", dept: "Atlantique", date: "23/04/2026", docs: ["Nomination.pdf"] },
-    { id: 3, name: "Bio Gounou", school: "EPP Kandi A", dept: "Alibori", date: "22/04/2026", docs: ["Certificat_Residence.pdf", "Diplome.pdf"] },
-    { id: 4, name: "Marcelle Zoundi", school: "EPP Abomey C", dept: "Zou", date: "21/04/2026", docs: ["CNI.pdf"] },
-    { id: 5, name: "Paulin Hounkpatin", school: "EPP Parakou Nord", dept: "Borgou", date: "20/04/2026", docs: ["Certificat.pdf", "Contrat.pdf"] },
-  ]);
+  const [pendingUsers, setPendingUsers] = React.useState<any[]>([]);
+
+  const fetchPendingUsers = React.useCallback(async () => {
+    setIsLoadingUsers(true);
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('is_validated', false)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setPendingUsers(data || []);
+    } catch (err) {
+      console.error('Erreur lors du chargement des demandes:', err);
+    } finally {
+      setIsLoadingUsers(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (activeTab === 'validations') {
+      fetchPendingUsers();
+    }
+  }, [activeTab, fetchPendingUsers]);
 
   const [pendingStocks, setPendingStocks] = React.useState([
     { id: 1, director: "Julien Dossou", school: "EPP Godomey Centre", products: "500kg Riz, 200kg Maïs", date: "Ce matin, 09:12" },
@@ -94,12 +118,47 @@ export default function AdminDash() {
   const stats = [
     { label: "Écoles Actives", value: "142", icon: <School className="text-brand-green" />, trend: "+4 ce mois" },
     { label: "Total Élevés", value: "24,500", icon: <Users className="text-blue-500" />, trend: "+2.5% vs mois dernier" },
-    { label: "Stocks Faibles", value: "12", icon: <AlertTriangle className="text-brand-orange" />, trend: "Action requise" },
+    { label: "Demandes en attente", value: pendingUsers.length.toString(), icon: <AlertTriangle className="text-brand-orange" />, trend: "Action requise" },
     { label: "Repas Servis (Mois)", value: "520k", icon: <CheckCircle className="text-emerald-500" />, trend: "Record atteint" },
   ];
 
-  const approveDirector = (id: number) => {
-    setPendingDirectors(prev => prev.filter(d => d.id !== id));
+  const approveUser = async (userId: string) => {
+    setIsProcessing(userId);
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ is_validated: true })
+        .eq('id', userId);
+
+      if (error) throw error;
+      setPendingUsers(prev => prev.filter(u => u.id !== userId));
+      alert('Utilisateur validé avec succès !');
+    } catch (err) {
+      console.error('Erreur validation:', err);
+      alert('Erreur lors de la validation.');
+    } finally {
+      setIsProcessing(null);
+    }
+  };
+
+  const rejectUser = async (userId: string) => {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer cette demande ?')) return;
+    setIsProcessing(userId);
+    try {
+      // Pour une démo on supprime le profil ou on change un statut si dispo
+      const { error } = await supabase
+        .from('profiles')
+        .delete()
+        .eq('id', userId);
+
+      if (error) throw error;
+      setPendingUsers(prev => prev.filter(u => u.id !== userId));
+    } catch (err) {
+      console.error('Erreur rejet:', err);
+      alert('Erreur lors de la suppression.');
+    } finally {
+      setIsProcessing(null);
+    }
   };
 
   const approveStock = (id: number) => {
@@ -231,11 +290,16 @@ export default function AdminDash() {
             }`}
           >
             {activeTab === 'validations' ? <BarChart2 size={16} /> : <Clock size={16} />}
-            {activeTab === 'validations' ? 'Voir Stats' : `Validations (${pendingDirectors.length + pendingStocks.length})`}
+            {activeTab === 'validations' ? 'Voir Stats' : `Validations (${pendingUsers.length})`}
           </button>
           <button 
+            disabled={!isValidated}
             onClick={() => setShowNewSchoolModal(true)}
-            className="bg-brand-green text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-brand-green/90 shadow-sm shadow-brand-green/20"
+            className={`px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition-all ${
+              isValidated 
+              ? 'bg-brand-green text-white hover:bg-brand-green/90 shadow-brand-green/20' 
+              : 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none'
+            }`}
           >
             Nouvelle École
           </button>
@@ -400,7 +464,7 @@ export default function AdminDash() {
                   </div>
                 </div>
                 <span className="bg-brand-orange/10 text-brand-orange text-xs font-bold px-4 py-1.5 rounded-full uppercase tracking-wider">
-                  {pendingDirectors.length} demandes
+                  {pendingUsers.length} demandes
                 </span>
               </div>
               <div className="overflow-x-auto">
@@ -408,53 +472,65 @@ export default function AdminDash() {
                   <thead>
                     <tr className="bg-slate-50/30">
                       <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Informations</th>
-                      <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Documents PDF</th>
-                      <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Date</th>
+                      <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Localité</th>
+                      <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Date demande</th>
                       <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
-                    {pendingDirectors.map((row) => (
-                      <tr key={row.id} className="hover:bg-slate-50 transition-colors">
+                    {isLoadingUsers ? (
+                      <tr>
+                        <td colSpan={4} className="px-8 py-10 text-center">
+                          <Loader2 className="animate-spin mx-auto text-slate-300" size={32} />
+                        </td>
+                      </tr>
+                    ) : pendingUsers.map((user) => (
+                      <tr key={user.id} className="hover:bg-slate-50 transition-colors">
                         <td className="px-8 py-5">
                           <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center font-bold text-slate-500">
-                              {row.name.split(' ').map(n=>n[0]).join('')}
+                            <div className="w-10 h-10 rounded-xl bg-brand-green/10 flex items-center justify-center font-black text-brand-green">
+                              {user.full_name?.split(' ').map((n:any)=>n[0]).join('') || '?'}
                             </div>
                             <div>
-                              <div className="font-black text-slate-800">{row.name}</div>
-                              <div className="text-xs text-slate-400 font-bold">{row.school} • {row.dept}</div>
+                              <div className="font-black text-slate-800">{user.full_name}</div>
+                              <div className="text-xs text-slate-400 font-bold">{user.role} • {user.school || 'Non assigné'}</div>
                             </div>
                           </div>
                         </td>
                         <td className="px-8 py-5">
-                          <div className="flex flex-wrap gap-2">
-                             {row.docs.map((doc, idx) => (
-                               <div key={idx} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 rounded-lg text-[10px] font-bold text-slate-600 hover:bg-brand-green/10 hover:text-brand-green cursor-pointer transition-colors border border-slate-200/50">
-                                 <FileText size={12} /> {doc}
-                               </div>
-                             ))}
-                          </div>
+                           <div className="text-sm font-bold text-slate-600 italic">
+                             {user.department}, {user.commune}
+                           </div>
+                           <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">{user.arrondissement}</div>
                         </td>
                         <td className="px-8 py-5">
-                           <div className="text-xs font-bold text-slate-500">{row.date}</div>
+                           <div className="text-xs font-bold text-slate-500">
+                             {user.created_at ? new Date(user.created_at).toLocaleDateString() : 'N/A'}
+                           </div>
                         </td>
                         <td className="px-8 py-5">
                           <div className="flex gap-2">
                             <button 
-                              onClick={() => approveDirector(row.id)}
-                              className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center hover:bg-emerald-600 hover:text-white transition-all shadow-sm"
+                              disabled={isProcessing === user.id}
+                              onClick={() => approveUser(user.id)}
+                              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all shadow-sm bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white disabled:opacity-50`}
+                              title="Valider le compte"
                             >
-                              <Check size={20} />
+                              {isProcessing === user.id ? <Loader2 className="animate-spin" size={18} /> : <Check size={20} />}
                             </button>
-                            <button className="w-10 h-10 rounded-xl bg-red-50 text-red-500 flex items-center justify-center hover:bg-red-500 hover:text-white transition-all shadow-sm">
-                              <X size={20} />
+                            <button 
+                              disabled={isProcessing === user.id}
+                              onClick={() => rejectUser(user.id)}
+                              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all shadow-sm bg-red-50 text-red-500 hover:bg-red-500 hover:text-white disabled:opacity-50`}
+                              title="Supprimer la demande"
+                            >
+                              <Trash2 size={20} />
                             </button>
                           </div>
                         </td>
                       </tr>
                     ))}
-                    {pendingDirectors.length === 0 && (
+                    {!isLoadingUsers && pendingUsers.length === 0 && (
                       <tr>
                         <td colSpan={4} className="px-8 py-20 text-center">
                           <div className="flex flex-col items-center gap-3">
