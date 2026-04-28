@@ -87,25 +87,37 @@ export default function AccountValidationForm({ onComplete }: AccountValidationF
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Session expirée");
 
-      // 1. Mise à jour du profil complet
+      // 1. Mise à jour du profil de base
       const { error: profileError } = await supabase
         .from('profiles')
         .update({
           full_name: formData.name,
-          role: formData.role,
           phone: formData.phone,
           department: formData.department,
           commune: formData.commune,
           arrondissement: formData.arrondissement,
           school: formData.role !== 'SUPER_ADMIN' ? formData.school : null,
           cip_number: formData.role === 'SUPER_ADMIN' ? formData.cipNumber : null,
-          is_validated: false, // Compte en attente de validation
+          // On ne change pas le rôle ici, on attend la validation
         })
         .eq('id', user.id);
 
       if (profileError) throw profileError;
 
-      // 2. Gestion de l'école (Optionnel: Enregistrement si nouvelle école)
+      // 2. Création de la demande de validation (votre "envoi d'email" à l'admin)
+      const { error: requestError } = await supabase
+        .from('validation_requests')
+        .insert({
+          user_id: user.id,
+          full_name: formData.name,
+          role_requested: formData.role,
+          school_name: formData.role !== 'SUPER_ADMIN' ? formData.school : 'Administration',
+          status: 'pending'
+        });
+
+      if (requestError) throw requestError;
+
+      // 3. Gestion de l'école (Optionnel: Enregistrement si nouvelle école)
       if (formData.role !== 'SUPER_ADMIN' && formData.school) {
         await supabase
           .from('schools')
