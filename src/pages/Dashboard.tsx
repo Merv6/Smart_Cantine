@@ -74,6 +74,16 @@ export default function Dashboard() {
 
       if (error || !profile) {
         console.error('Erreur chargement profil:', error);
+        
+        // Force SUPER_ADMIN for the specific demo emails
+        const adminEmails = ['honvoumerveille@gmail.com', 'arianaudelegbede1@gmail.com'];
+        if (user.email && adminEmails.includes(user.email)) {
+          setRole(UserRole.SUPER_ADMIN);
+          setIsValidated(true);
+          setIsLoading(false);
+          return;
+        }
+
         // Fallback pour la démo si profil manquant
         setRole(UserRole.DIRECTOR);
         setIsValidated(false);
@@ -81,8 +91,15 @@ export default function Dashboard() {
         return;
       }
 
-      setRole(profile.role as UserRole || UserRole.DIRECTOR);
-      setIsValidated(profile.is_validated);
+      // Also force override even if profile exists but role is wrong
+      const adminEmails = ['honvoumerveille@gmail.com', 'arianaudelegbede1@gmail.com'];
+      if (user.email && adminEmails.includes(user.email)) {
+        setRole(UserRole.SUPER_ADMIN);
+        setIsValidated(true);
+      } else {
+        setRole(profile.role as UserRole || UserRole.DIRECTOR);
+        setIsValidated(profile.is_validated);
+      }
       setIsLoading(false);
     }
 

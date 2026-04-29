@@ -56,9 +56,10 @@ export type InputProps = React.InputHTMLAttributes<HTMLInputElement> & {
   label?: string;
   error?: string;
   icon?: React.ReactNode;
+  rightElement?: React.ReactNode;
 };
 
-export function Input({ className, label, error, icon, ...props }: InputProps) {
+export function Input({ className, label, error, icon, rightElement, ...props }: InputProps) {
   return (
     <div className="flex flex-col gap-1.5 w-full">
       {label && <label className="text-xs font-semibold text-slate-700 ml-1">{label}</label>}
@@ -72,11 +73,17 @@ export function Input({ className, label, error, icon, ...props }: InputProps) {
           className={cn(
             'flex h-11 w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green/30 focus-visible:border-brand-green disabled:cursor-not-allowed disabled:opacity-50 transition-all shadow-sm',
             icon && 'pl-10',
+            rightElement && 'pr-12',
             error && 'border-red-500 focus-visible:ring-red-500/20',
             className
           )}
           {...props}
         />
+        {rightElement && (
+          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+            {rightElement}
+          </div>
+        )}
       </div>
       {error && <span className="text-[10px] font-medium text-red-500 ml-1">{error}</span>}
     </div>

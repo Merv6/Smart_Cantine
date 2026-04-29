@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Lock, Mail, User, ArrowLeft, ArrowRight, ShieldCheck, ChefHat, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Lock, Mail, User, ArrowLeft, ArrowRight, ShieldCheck, ChefHat, CheckCircle2, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { Button, Input } from '../components/ui';
 
 import { supabase } from '../lib/supabase';
@@ -11,6 +11,7 @@ export default function Login() {
   const [identifier, setIdentifier] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [error, setError] = React.useState('');
+  const [showPassword, setShowPassword] = React.useState(false);
   const navigate = useNavigate();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -97,13 +98,22 @@ export default function Login() {
             
             <Input
               label="Mot de passe"
-              type="password"
+              type={showPassword ? "text" : "password"}
               placeholder="••••••••"
               required
               value={password}
               onChange={e => setPassword(e.target.value)}
               className="rounded-xl"
               icon={<Lock size={18} />}
+              rightElement={
+                <button 
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="text-slate-400 hover:text-slate-600 focus:outline-none"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              }
             />
 
             <div className="flex justify-end">

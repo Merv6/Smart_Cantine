@@ -168,9 +168,11 @@ export default function Home() {
                  Créer un compte
                </Button>
              </Link>
-             <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10 rounded-full px-12">
-               Nous contacter
-             </Button>
+             <a href="#contact">
+               <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10 rounded-full px-12">
+                 Nous contacter
+               </Button>
+             </a>
           </div>
         </div>
       </section>

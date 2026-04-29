@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowLeft, ArrowRight, Upload, CheckCircle2, Utensils, ShieldCheck, ChevronRight, AlertCircle } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Upload, CheckCircle2, Utensils, ShieldCheck, ChevronRight, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { Button, Input } from '../components/ui';
 import { BENIN_LOCATIONS } from '../constants/benin';
 
@@ -11,6 +11,7 @@ export default function Register() {
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState('');
   const [success, setSuccess] = React.useState(false);
+  const [showPassword, setShowPassword] = React.useState(false);
   const [formData, setFormData] = React.useState({
     email: '',
     password: '',
@@ -113,19 +114,37 @@ export default function Register() {
             />
             <Input 
               label="Mot de passe" 
-              type="password" 
+              type={showPassword ? "text" : "password"} 
               placeholder="••••••••"
               required 
               value={formData.password} 
               onChange={e => setFormData({...formData, password: e.target.value})} 
+              rightElement={
+                <button 
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="text-slate-400 hover:text-slate-600 focus:outline-none"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              }
             />
             <Input 
               label="Confirmer le mot de passe" 
-              type="password" 
+              type={showPassword ? "text" : "password"} 
               placeholder="••••••••"
               required 
               value={formData.confirmPassword} 
               onChange={e => setFormData({...formData, confirmPassword: e.target.value})} 
+              rightElement={
+                <button 
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="text-slate-400 hover:text-slate-600 focus:outline-none"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              }
             />
 
             <Button 

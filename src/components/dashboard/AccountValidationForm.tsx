@@ -87,10 +87,11 @@ export default function AccountValidationForm({ onComplete }: AccountValidationF
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Session expirée");
 
-      // 1. Mise à jour du profil de base
+      // 1. Mise à jour ou création du profil de base
       const { error: profileError } = await supabase
         .from('profiles')
-        .update({
+        .upsert({
+          id: user.id,
           full_name: formData.name,
           phone: formData.phone,
           department: formData.department,
@@ -98,9 +99,9 @@ export default function AccountValidationForm({ onComplete }: AccountValidationF
           arrondissement: formData.arrondissement,
           school: formData.role !== 'SUPER_ADMIN' ? formData.school : null,
           cip_number: formData.role === 'SUPER_ADMIN' ? formData.cipNumber : null,
+          email: user.email,
           // On ne change pas le rôle ici, on attend la validation
-        })
-        .eq('id', user.id);
+        }, { onConflict: 'id' });
 
       if (profileError) throw profileError;
 

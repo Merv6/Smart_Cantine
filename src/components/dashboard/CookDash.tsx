@@ -17,10 +17,34 @@ import {
 } from 'lucide-react';
 import { Button, Input } from '../ui';
 
+import { supabase } from '../../lib/supabase';
+
 export default function CookDash({ isValidated }: { isValidated: boolean }) {
   const [step, setStep] = React.useState(1);
   const [isLoading, setIsLoading] = React.useState(false);
   const [isSuccess, setIsSuccess] = React.useState(false);
+  const [schoolId, setSchoolId] = React.useState<string | null>(null);
+  const [userProfile, setUserProfile] = React.useState<any>(null);
+  const [realInventory, setRealInventory] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    async function getProfile() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+        if (profile) {
+          setUserProfile(profile);
+          setSchoolId(profile.school_id);
+          
+          if (profile.school_id) {
+            const { data: inv } = await supabase.from('inventory').select('*').eq('school_id', profile.school_id);
+            if (inv) setRealInventory(inv);
+          }
+        }
+      }
+    }
+    getProfile();
+  }, []);
   
   // Form State
   const [studentsCount, setStudentsCount] = React.useState('');
@@ -66,26 +90,58 @@ export default function CookDash({ isValidated }: { isValidated: boolean }) {
 
   const handleSubmitReport = async () => {
     setIsLoading(true);
-    // Simuler l'envoi
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    // Mettre à jour la progression
-    const today = new Date().getDay(); // 0 is Sunday, 1 is Monday...
-    const progressIndex = today === 0 ? 4 : Math.min(today - 1, 4); // Map Mon-Fri
-    
-    const newProgress = [...weekProgress];
-    if (progressIndex >= 0 && progressIndex <= 4) {
-      newProgress[progressIndex] = true;
+    try {
+      if (!schoolId) throw new Error("École non assignée");
+      
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Non authentifié");
+
+      const { error } = await supabase
+        .from('meal_reports')
+        .insert({
+          school_id: schoolId,
+          cook_id: user.id,
+          meal_description: meal === 'Autre' ? customMeal : meal,
+          students_count: parseInt(studentsCount),
+          photos: photos.filter(p => p !== null) as string[]
+        });
+
+      if (error) throw error;
+      
+      // Update inventory (decrement quantities)
+      const invPromises = ingredients.map(item => {
+        const existing = realInventory.find(ri => ri.item_name === item.name);
+        if (existing) {
+          return supabase
+            .from('inventory')
+            .update({ quantity: Math.max(0, Number(existing.quantity) - item.qty) })
+            .eq('id', existing.id);
+        }
+        return Promise.resolve();
+      });
+      await Promise.all(invPromises);
+
+      // Mettre à jour la progression
+      const today = new Date().getDay(); 
+      const progressIndex = today === 0 ? 4 : Math.min(today - 1, 4);
+      
+      const newProgress = [...weekProgress];
+      if (progressIndex >= 0 && progressIndex <= 4) {
+        newProgress[progressIndex] = true;
+      }
+      setWeekProgress(newProgress);
+      
+      setIsLoading(false);
+      setIsSuccess(true);
+      
+      setTimeout(() => {
+        resetForm();
+      }, 5000);
+    } catch (err) {
+      console.error('Erreur rapport repas:', err);
+      alert('Erreur lors de l\'envoi du rapport.');
+      setIsLoading(false);
     }
-    setWeekProgress(newProgress);
-    
-    setIsLoading(false);
-    setIsSuccess(true);
-    
-    // Réinitialisation après 3 secondes ou au clic
-    setTimeout(() => {
-      resetForm();
-    }, 5000);
   };
 
   const resetForm = () => {

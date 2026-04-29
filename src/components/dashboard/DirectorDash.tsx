@@ -24,6 +24,8 @@ import {
 import { Button, Input } from '../ui';
 import { motion, AnimatePresence } from 'motion/react';
 
+import { supabase } from '../../lib/supabase';
+
 export default function DirectorDash({ 
   isValidated, 
   initialView = 'overview',
@@ -34,6 +36,44 @@ export default function DirectorDash({
   onViewChange?: (view: any) => void;
 }) {
   const [view, setView] = React.useState(initialView);
+  const [schoolInfo, setSchoolInfo] = React.useState<any>(null);
+  const [realInventory, setRealInventory] = React.useState<any[]>([]);
+  const [recentReports, setRecentReports] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  
+  const fetchData = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*, schools(*)')
+        .eq('id', user.id)
+        .single();
+
+      if (profile && profile.schools) {
+        setSchoolInfo(profile.schools);
+        
+        const [inventoryRes, reportsRes] = await Promise.all([
+          supabase.from('inventory').select('*').eq('school_id', profile.school_id),
+          supabase.from('meal_reports').select('*, profiles(full_name)').eq('school_id', profile.school_id).order('created_at', { ascending: false })
+        ]);
+
+        setRealInventory(inventoryRes.data || []);
+        setRecentReports(reportsRes.data || []);
+      }
+    } catch (err) {
+      console.error('Erreur fetching director data:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   React.useEffect(() => {
     setView(initialView);
@@ -102,10 +142,32 @@ export default function DirectorDash({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    // Simuler l'envoi vers l'admin
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setIsSubmitting(false);
-    setIsPending(true);
+    try {
+      if (!schoolInfo) throw new Error("École non assignée");
+      
+      const { data: { user } } = await supabase.auth.getUser();
+
+      const promises = formData.products.map(prod => {
+        const itemName = prod.item === 'Autre' ? prod.customItem : prod.item;
+        return supabase.from('inventory').upsert({
+          school_id: schoolInfo.id,
+          item_name: itemName,
+          quantity: prod.quantity,
+          unit: prod.unit,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'school_id,item_name' });
+      });
+
+      await Promise.all(promises);
+      
+      setIsSubmitting(false);
+      setIsPending(true);
+      fetchData();
+    } catch (err) {
+      console.error('Erreur réception vivres:', err);
+      alert('Erreur lors de l\'enregistrement.');
+      setIsSubmitting(false);
+    }
   };
 
   const handleCookSubmit = async (e: React.FormEvent) => {
@@ -469,17 +531,23 @@ export default function DirectorDash({
                       <h3 className="font-black text-slate-800 uppercase text-xs tracking-widest">Alertes de Stock</h3>
                       <div className="w-2 h-2 bg-brand-orange rounded-full animate-ping" />
                     </div>
-                    <div className="space-y-3">
-                      <div className="p-4 bg-red-50 rounded-2xl border border-red-100">
-                        <div className="text-[10px] font-black text-red-500 uppercase mb-1">Stock Critique</div>
-                        <div className="font-bold text-slate-800 text-sm">Maïs: 80kg restant</div>
-                        <div className="text-xs text-red-400 font-medium">Autonomie: 2 jours</div>
-                      </div>
-                      <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100">
-                        <div className="text-[10px] font-black text-amber-600 uppercase mb-1">Alerte</div>
-                        <div className="font-bold text-slate-800 text-sm">Huile: 15L restant</div>
-                      </div>
-                    </div>
+            <div className="space-y-4">
+              {realInventory.length > 0 ? realInventory.map((item, i) => (
+                <div key={i} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between">
+                  <div>
+                    <div className="font-bold text-slate-800">{item.item_name}</div>
+                    <div className="text-xs text-slate-400">{item.quantity} {item.unit}</div>
+                  </div>
+                  <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${
+                    Number(item.quantity) > 100 ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'
+                  }`}>
+                    {Number(item.quantity) > 100 ? 'Optimal' : 'Bas'}
+                  </div>
+                </div>
+              )) : (
+                <p className="text-sm text-slate-400 italic">Aucun stock enregistré</p>
+              )}
+            </div>
                   </div>
                   <Button onClick={() => setView('inventory')} variant="ghost" className="w-full text-brand-green font-black uppercase text-[10px] tracking-widest hover:bg-brand-green/5">Gérer les stocks <ChevronRight size={14} className="ml-1" /></Button>
                 </div>

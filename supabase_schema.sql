@@ -3,9 +3,24 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
   full_name TEXT,
   role TEXT CHECK (role IN ('SUPER_ADMIN', 'DIRECTOR', 'COOK')),
+  phone TEXT,
+  department TEXT,
+  commune TEXT,
+  arrondissement TEXT,
+  school TEXT,
   cip_number TEXT,
   school_id UUID,
   is_validated BOOLEAN DEFAULT false,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS public.validation_requests (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+  full_name TEXT,
+  role_requested TEXT,
+  school_name TEXT,
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 

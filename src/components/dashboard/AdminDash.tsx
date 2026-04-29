@@ -83,31 +83,101 @@ export default function AdminDash({ isValidated }: { isValidated: boolean }) {
     director: ''
   });
   
+  const [deptStats, setDeptStats] = React.useState<any[]>([]);
   const [pendingUsers, setPendingUsers] = React.useState<any[]>([]);
+  const [statsData, setStatsData] = React.useState({
+    activeSchools: 0,
+    totalStudents: 0,
+    pendingRequests: 0,
+    totalMeals: 0
+  });
+  const [monthlyYield, setMonthlyYield] = React.useState<any[]>([]);
+  const [globalInventory, setGlobalInventory] = React.useState<any[]>([]);
+  const [isLoadingStats, setIsLoadingStats] = React.useState(true);
 
-  const fetchPendingUsers = React.useCallback(async () => {
-    setIsLoadingUsers(true);
+  const fetchDashboardData = React.useCallback(async () => {
+    setIsLoadingStats(true);
     try {
-      const { data, error } = await supabase
+      // 1. Fetch pending users
+      const { data: users, error: usersError } = await supabase
         .from('profiles')
         .select('*')
         .eq('is_validated', false)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setPendingUsers(data || []);
+      if (usersError) throw usersError;
+      setPendingUsers(users || []);
+
+      // 2. Fetch stats
+      const [schoolsRes, reportsRes, inventoryRes] = await Promise.all([
+        supabase.from('schools').select('*'),
+        supabase.from('meal_reports').select('students_count, school_id'),
+        supabase.from('inventory').select('item_name, quantity')
+      ]);
+
+      const schools = schoolsRes.data || [];
+      const reports = reportsRes.data || [];
+      
+      const mealsCount = reports.length;
+      const studentsSum = reports.reduce((acc, curr) => acc + (curr.students_count || 0), 0);
+
+      setStatsData({
+        activeSchools: schools.length,
+        totalStudents: studentsSum,
+        pendingRequests: users?.length || 0,
+        totalMeals: mealsCount
+      });
+
+      // 3. Process inventory
+      const invMap: { [key: string]: number } = {};
+      inventoryRes.data?.forEach(item => {
+        invMap[item.item_name] = (invMap[item.item_name] || 0) + Number(item.quantity);
+      });
+      setGlobalInventory(Object.entries(invMap).map(([name, value]) => ({ name, value })).slice(0, 4));
+
+      // 4. Dept Stats
+      const deptMap: { [key: string]: { schools: number, pupils: number, meals: number } } = {};
+      schools.forEach(s => {
+        const d = s.department || 'Inconnu';
+        if (!deptMap[d]) deptMap[d] = { schools: 0, pupils: 0, meals: 0 };
+        deptMap[d].schools++;
+      });
+
+      reports.forEach(r => {
+        const school = schools.find(s => s.id === r.school_id);
+        const d = school?.department || 'Inconnu';
+        if (!deptMap[d]) deptMap[d] = { schools: 0, pupils: 0, meals: 0 };
+        deptMap[d].meals++;
+        deptMap[d].pupils += (r.students_count || 0);
+      });
+
+      setDeptStats(Object.entries(deptMap).map(([name, stats]) => ({
+        name,
+        schools: stats.schools,
+        pupils: stats.pupils,
+        meals: stats.meals > 1000 ? (stats.meals / 1000).toFixed(1) + 'k' : stats.meals.toString()
+      })));
+
+      // 4. Mock monthly data based on real reports count if available
+      // In a real app we'd group by month in the database
+      setMonthlyYield([
+        { name: 'Jan', meals: Math.floor(mealsCount * 0.1) },
+        { name: 'Fév', meals: Math.floor(mealsCount * 0.15) },
+        { name: 'Mar', meals: Math.floor(mealsCount * 0.2) },
+        { name: 'Avr', meals: Math.floor(mealsCount * 0.25) },
+        { name: 'Mai', meals: mealsCount },
+      ]);
+
     } catch (err) {
-      console.error('Erreur lors du chargement des demandes:', err);
+      console.error('Erreur dashboard data:', err);
     } finally {
-      setIsLoadingUsers(false);
+      setIsLoadingStats(false);
     }
   }, []);
 
   React.useEffect(() => {
-    if (activeTab === 'validations') {
-      fetchPendingUsers();
-    }
-  }, [activeTab, fetchPendingUsers]);
+    fetchDashboardData();
+  }, [fetchDashboardData]);
 
   const [pendingStocks, setPendingStocks] = React.useState([
     { id: 1, director: "Julien Dossou", school: "EPP Godomey Centre", products: "500kg Riz, 200kg Maïs", date: "Ce matin, 09:12" },
@@ -116,10 +186,10 @@ export default function AdminDash({ isValidated }: { isValidated: boolean }) {
   ]);
 
   const stats = [
-    { label: "Écoles Actives", value: "142", icon: <School className="text-brand-green" />, trend: "+4 ce mois" },
-    { label: "Total Élevés", value: "24,500", icon: <Users className="text-blue-500" />, trend: "+2.5% vs mois dernier" },
-    { label: "Demandes en attente", value: pendingUsers.length.toString(), icon: <AlertTriangle className="text-brand-orange" />, trend: "Action requise" },
-    { label: "Repas Servis (Mois)", value: "520k", icon: <CheckCircle className="text-emerald-500" />, trend: "Record atteint" },
+    { label: "Écoles Actives", value: statsData.activeSchools.toString(), icon: <School className="text-brand-green" />, trend: "Total" },
+    { label: "Total Élevés", value: statsData.totalStudents.toLocaleString(), icon: <Users className="text-blue-500" />, trend: "Cumulative" },
+    { label: "Demandes en attente", value: statsData.pendingRequests.toString(), icon: <AlertTriangle className="text-brand-orange" />, trend: "Action requise" },
+    { label: "Repas Total", value: statsData.totalMeals.toLocaleString(), icon: <CheckCircle className="text-emerald-500" />, trend: "Servis" },
   ];
 
   const approveUser = async (userId: string) => {
@@ -165,12 +235,30 @@ export default function AdminDash({ isValidated }: { isValidated: boolean }) {
     setPendingStocks(prev => prev.filter(s => s.id !== id));
   };
 
-  const handleCreateSchool = (e: React.FormEvent) => {
+  const handleCreateSchool = async (e: React.FormEvent) => {
     e.preventDefault();
-    // In a real app we'd save it. Here we just close the modal.
-    setShowNewSchoolModal(false);
-    setNewSchool({ name: '', department: '', commune: '', arrondissement: '', director: '' });
-    alert('École créée avec succès !');
+    setIsProcessing('creating-school');
+    try {
+      const { error } = await supabase
+        .from('schools')
+        .insert({
+          name: newSchool.name,
+          department: newSchool.department,
+          commune: newSchool.commune
+        });
+
+      if (error) throw error;
+      
+      setShowNewSchoolModal(false);
+      setNewSchool({ name: '', department: '', commune: '', arrondissement: '', director: '' });
+      alert('École créée avec succès !');
+      fetchDashboardData();
+    } catch (err) {
+      console.error('Erreur création école:', err);
+      alert('Erreur lors de la création de l\'école.');
+    } finally {
+      setIsProcessing(null);
+    }
   };
 
   return (
@@ -341,7 +429,7 @@ export default function AdminDash({ isValidated }: { isValidated: boolean }) {
                 </div>
                 <div className="h-[300px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={data}>
+                    <BarChart data={monthlyYield.length > 0 ? monthlyYield : data}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
                       <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94A3B8', fontSize: 12}} />
                       <YAxis axisLine={false} tickLine={false} tick={{fill: '#94A3B8', fontSize: 12}} />
@@ -415,7 +503,7 @@ export default function AdminDash({ isValidated }: { isValidated: boolean }) {
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
-                        data={stockData}
+                        data={globalInventory.length > 0 ? globalInventory : stockData}
                         cx="50%"
                         cy="50%"
                         innerRadius={60}
@@ -423,7 +511,7 @@ export default function AdminDash({ isValidated }: { isValidated: boolean }) {
                         paddingAngle={5}
                         dataKey="value"
                       >
-                        {stockData.map((entry, index) => (
+                        {(globalInventory.length > 0 ? globalInventory : stockData).map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
@@ -432,13 +520,13 @@ export default function AdminDash({ isValidated }: { isValidated: boolean }) {
                   </ResponsiveContainer>
                 </div>
                 <div className="space-y-3 mt-6">
-                  {stockData.map((item, i) => (
+                  {(globalInventory.length > 0 ? globalInventory : stockData).map((item, i) => (
                     <div key={i} className="flex items-center justify-between text-sm">
                       <div className="flex items-center gap-2">
                         <div className="w-2 h-2 rounded-full" style={{backgroundColor: COLORS[i]}} />
                         <span className="text-slate-600 font-bold">{item.name}</span>
                       </div>
-                      <span className="font-black text-slate-800">{item.value} kg</span>
+                      <span className="font-black text-slate-800">{item.value} {item.unit || 'kg'}</span>
                     </div>
                   ))}
                 </div>
