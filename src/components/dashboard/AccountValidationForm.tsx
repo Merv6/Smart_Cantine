@@ -84,14 +84,51 @@ export default function AccountValidationForm({ onComplete }: AccountValidationF
     setError('');
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Session expirée");
+      // 1. Get user session firmly
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) throw new Error("Votre session a expiré. Veuillez vous reconnecter.");
+      }
+      
+      const activeUser = user || (await supabase.auth.getSession()).data.session?.user;
+      if (!activeUser) throw new Error("Utilisateur non identifié");
 
-      // 1. Mise à jour ou création du profil de base
+      let documentUrl = '';
+      
+      // 2. Upload du document si présent (Non-bloquant pour la démo)
+      if (formData.document) {
+        try {
+          const fileExt = formData.document.name.split('.').pop();
+          const fileName = `${activeUser.id}-${Date.now()}.${fileExt}`;
+          const filePath = `validation-proofs/${fileName}`;
+
+          const { data: uploadData, error: uploadError } = await supabase.storage
+            .from('proofs')
+            .upload(filePath, formData.document, {
+              cacheControl: '3600',
+              upsert: false
+            });
+
+          if (uploadError) {
+            console.warn('⚠️ Stockage non configuré (Bucket "proofs" manquant). Le document ne sera pas sauvegardé sur le cloud.');
+            // On continue sans l'URL pour ne pas bloquer l'utilisateur
+          } else if (uploadData) {
+            const { data: { publicUrl } } = supabase.storage
+              .from('proofs')
+              .getPublicUrl(filePath);
+            documentUrl = publicUrl;
+          }
+        } catch (storageErr) {
+          console.error('Erreur stockage silencieuse:', storageErr);
+        }
+      }
+
+      // 3. Mise à jour ou création du profil de base
       const { error: profileError } = await supabase
         .from('profiles')
         .upsert({
-          id: user.id,
+          id: activeUser.id,
           full_name: formData.name,
           phone: formData.phone,
           department: formData.department,
@@ -99,26 +136,27 @@ export default function AccountValidationForm({ onComplete }: AccountValidationF
           arrondissement: formData.arrondissement,
           school: formData.role !== 'SUPER_ADMIN' ? formData.school : null,
           cip_number: formData.role === 'SUPER_ADMIN' ? formData.cipNumber : null,
-          email: user.email,
-          // On ne change pas le rôle ici, on attend la validation
+          email: activeUser.email,
+          is_validated: false, // On force à false pendant la demande
         }, { onConflict: 'id' });
 
       if (profileError) throw profileError;
 
-      // 2. Création de la demande de validation (votre "envoi d'email" à l'admin)
+      // 4. Création de la demande de validation
       const { error: requestError } = await supabase
         .from('validation_requests')
         .insert({
-          user_id: user.id,
+          user_id: activeUser.id,
           full_name: formData.name,
           role_requested: formData.role,
           school_name: formData.role !== 'SUPER_ADMIN' ? formData.school : 'Administration',
+          document_url: documentUrl,
           status: 'pending'
         });
 
       if (requestError) throw requestError;
 
-      // 3. Gestion de l'école (Optionnel: Enregistrement si nouvelle école)
+      // 5. Gestion de l'école (Optionnel)
       if (formData.role !== 'SUPER_ADMIN' && formData.school) {
         await supabase
           .from('schools')
@@ -129,12 +167,21 @@ export default function AccountValidationForm({ onComplete }: AccountValidationF
           }, { onConflict: 'name' });
       }
 
-      // Attente de 2 secondes pour confirmer la transmission (comme demandé)
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // 6. Confirmation finale
+      if (formData.document && !documentUrl) {
+        console.warn("Dossier soumis sans fichier (Bucket proofs non configuré)");
+      }
+
       setIsSubmitted(true);
     } catch (err: any) {
       console.error('Erreur validation profil:', err);
-      setError(err.message || "Une erreur est survenue lors de la configuration.");
+      if (err.message?.includes('Failed to fetch')) {
+        setError("Impossible de contacter le serveur. Vérifiez votre connexion.");
+      } else if (err.message?.includes('Bucket not found')) {
+        setError("Erreur de stockage : Le compartiment 'proofs' n'est pas créé sur Supabase.");
+      } else {
+        setError(err.message || "Une erreur est survenue lors de l'envoi de votre demande.");
+      }
     } finally {
       setIsLoading(false);
     }

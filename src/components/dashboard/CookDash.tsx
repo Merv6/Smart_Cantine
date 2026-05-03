@@ -19,7 +19,15 @@ import { Button, Input } from '../ui';
 
 import { supabase } from '../../lib/supabase';
 
-export default function CookDash({ isValidated }: { isValidated: boolean }) {
+export default function CookDash({ 
+  isValidated, 
+  user: initialUser, 
+  profile: initialProfile 
+}: { 
+  isValidated: boolean, 
+  user?: any, 
+  profile?: any 
+}) {
   const [step, setStep] = React.useState(1);
   const [isLoading, setIsLoading] = React.useState(false);
   const [isSuccess, setIsSuccess] = React.useState(false);
@@ -29,22 +37,23 @@ export default function CookDash({ isValidated }: { isValidated: boolean }) {
 
   React.useEffect(() => {
     async function getProfile() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-        if (profile) {
-          setUserProfile(profile);
-          setSchoolId(profile.school_id);
-          
-          if (profile.school_id) {
-            const { data: inv } = await supabase.from('inventory').select('*').eq('school_id', profile.school_id);
-            if (inv) setRealInventory(inv);
-          }
+      const activeUser = initialUser || (await supabase.auth.getUser()).data.user;
+      if (!activeUser) return;
+
+      const { data: profile } = await supabase.from('profiles').select('*').eq('id', activeUser.id).single();
+
+      if (profile) {
+        setUserProfile(profile);
+        setSchoolId(profile.school_id);
+        
+        if (profile.school_id) {
+          const { data: inv } = await supabase.from('inventory').select('*').eq('school_id', profile.school_id);
+          if (inv) setRealInventory(inv);
         }
       }
     }
     getProfile();
-  }, []);
+  }, [initialUser, initialProfile, isValidated]);
   
   // Form State
   const [studentsCount, setStudentsCount] = React.useState('');
@@ -52,14 +61,17 @@ export default function CookDash({ isValidated }: { isValidated: boolean }) {
   const [customMeal, setCustomMeal] = React.useState('');
   
   const [photos, setPhotos] = React.useState<(string | null)[]>([null, null]);
-  const [ingredients, setIngredients] = React.useState([
-    { name: 'Riz', qty: 12, unit: 'kg' },
-    { name: 'Maïs', qty: 0, unit: 'kg' },
-    { name: 'Haricot', qty: 5, unit: 'kg' },
-    { name: 'Huile', qty: 2, unit: 'L' },
-  ]);
+  const [ingredients, setIngredients] = React.useState<any[]>([]);
   const [newIngredient, setNewIngredient] = React.useState({ name: '', qty: 0, unit: 'kg' });
   const [showAddIngredient, setShowAddIngredient] = React.useState(false);
+
+  React.useEffect(() => {
+    if (realInventory.length > 0 && ingredients.length === 0) {
+      // Pré-remplir avec les stocks existants les plus communs
+      const common = realInventory.filter(item => ['Riz', 'Maïs', 'Haricot', 'Huile'].includes(item.item_name));
+      setIngredients(common.map(item => ({ name: item.item_name, qty: 0, unit: item.unit || 'kg' })));
+    }
+  }, [realInventory]);
   
   const [weekProgress, setWeekProgress] = React.useState([true, true, false, false, false]); // Mon-Tue completed
 
@@ -89,10 +101,12 @@ export default function CookDash({ isValidated }: { isValidated: boolean }) {
   };
 
   const handleSubmitReport = async () => {
+    if (!schoolId) {
+      alert('Erreur: Vous n\'êtes rattaché à aucun établissement. Veuillez contacter votre directeur.');
+      return;
+    }
     setIsLoading(true);
     try {
-      if (!schoolId) throw new Error("École non assignée");
-      
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Non authentifié");
 
@@ -160,7 +174,10 @@ export default function CookDash({ isValidated }: { isValidated: boolean }) {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl">Espace Cuisinier</h1>
-          <p className="text-slate-500">Service du jour • {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+          <p className="text-slate-500">
+            {userProfile?.full_name ? `${userProfile.full_name} • ` : ''}
+            {schoolId ? 'Cantine Scolaire' : 'En attente de rattachement école'}
+          </p>
         </div>
         <div className="bg-white border border-slate-200 px-4 py-2 rounded-2xl flex items-center gap-3">
           <Clock className="text-brand-orange" size={18} />
@@ -243,9 +260,9 @@ export default function CookDash({ isValidated }: { isValidated: boolean }) {
                       )}
 
                       <Button 
-                        disabled={!isValidated || !isStep1Valid}
+                        disabled={!isValidated || !isStep1Valid || !schoolId}
                         onClick={() => setStep(2)} 
-                        className={`w-full rounded-xl py-6 ${!isValidated ? 'bg-slate-300 text-white cursor-not-allowed shadow-none' : ''}`}
+                        className={`w-full rounded-xl py-6 ${(!isValidated || !schoolId) ? 'bg-slate-300 text-white cursor-not-allowed shadow-none' : ''}`}
                       >
                         Suivant <ArrowRight className="ml-2" size={18} />
                       </Button>
@@ -405,25 +422,23 @@ export default function CookDash({ isValidated }: { isValidated: boolean }) {
                <h3 className="text-lg font-bold">Stock Restant</h3>
              </div>
              <div className="space-y-4">
-                {[
-                  { name: 'Riz', qty: 450, color: 'brand-green' },
-                  { name: 'Maïs', qty: 80, color: 'brand-orange' },
-                  { name: 'Haricot', qty: 120, color: 'brand-green' },
-                ].map((item, i) => (
+                {realInventory.length > 0 ? realInventory.map((item, i) => (
                   <div key={i} className="flex flex-col gap-2">
                     <div className="flex justify-between items-center text-xs font-bold uppercase tracking-wide">
-                       <span className="text-slate-500">{item.name}</span>
-                       <span className="text-slate-800">{item.qty} kg</span>
+                       <span className="text-slate-500">{item.item_name}</span>
+                       <span className="text-slate-800">{item.quantity} {item.unit}</span>
                     </div>
                     <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
                        <motion.div 
                         initial={{ width: 0 }}
-                        animate={{ width: `${(item.qty / 600) * 100}%` }}
-                        className={`h-full ${item.qty < 100 ? 'bg-red-500' : 'bg-brand-green'}`} 
+                        animate={{ width: `${Math.min(100, (Number(item.quantity) / (item.item_name === 'Riz' ? 1000 : 500)) * 100)}%` }}
+                        className={`h-full ${Number(item.quantity) < 50 ? 'bg-red-500' : 'bg-brand-green'}`} 
                        />
                     </div>
                   </div>
-                ))}
+                )) : (
+                  <p className="text-xs text-slate-400 italic">Aucun stock enregistré</p>
+                )}
              </div>
            </div>
 

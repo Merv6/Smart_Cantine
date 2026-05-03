@@ -28,10 +28,14 @@ import { supabase } from '../../lib/supabase';
 
 export default function DirectorDash({ 
   isValidated, 
+  user: initialUser,
+  profile: initialProfile,
   initialView = 'overview',
   onViewChange
 }: { 
   isValidated: boolean;
+  user?: any;
+  profile?: any;
   initialView?: 'overview' | 'inventory' | 'canteen' | 'settings' | 'profile' | 'register' | 'register_cook' | 'validate_meals';
   onViewChange?: (view: any) => void;
 }) {
@@ -44,32 +48,83 @@ export default function DirectorDash({
   const fetchData = React.useCallback(async () => {
     setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const activeUser = initialUser || (await supabase.auth.getUser()).data.user;
+      if (!activeUser) return;
 
-      const { data: profile } = await supabase
+      console.log('📡 Fetching profile/school data for user:', activeUser.id);
+      
+      const { data: profile, error: profileErr } = await supabase
         .from('profiles')
         .select('*, schools(*)')
-        .eq('id', user.id)
+        .eq('id', activeUser.id)
         .single();
-
-      if (profile && profile.schools) {
-        setSchoolInfo(profile.schools);
+      
+      let currentProfile = profile;
         
-        const [inventoryRes, reportsRes] = await Promise.all([
-          supabase.from('inventory').select('*').eq('school_id', profile.school_id),
-          supabase.from('meal_reports').select('*, profiles(full_name)').eq('school_id', profile.school_id).order('created_at', { ascending: false })
-        ]);
+      if (profileErr || !currentProfile) {
+        console.error('❌ Error fetching profile:', profileErr);
+        const { data: simpleProfile } = await supabase.from('profiles').select('*').eq('id', activeUser.id).single();
+        if (simpleProfile) {
+          if (simpleProfile.school_id) {
+             const { data: school } = await supabase.from('schools').select('*').eq('id', simpleProfile.school_id).single();
+             if (school) setSchoolInfo(school);
+          }
+        }
+        return;
+      }
 
-        setRealInventory(inventoryRes.data || []);
-        setRecentReports(reportsRes.data || []);
+      if (currentProfile) {
+        let currentSchool = currentProfile.schools;
+
+        if (!currentSchool && currentProfile.school && !currentProfile.school_id) {
+          const { data: matchedSchool } = await supabase
+            .from('schools')
+            .select('*')
+            .eq('name', currentProfile.school)
+            .maybeSingle();
+          
+          if (matchedSchool) {
+            await supabase.from('profiles').update({ school_id: matchedSchool.id }).eq('id', activeUser.id);
+            currentSchool = matchedSchool;
+          } else {
+            const { data: newSchool } = await supabase
+              .from('schools')
+              .insert({ 
+                name: currentProfile.school,
+                department: currentProfile.department,
+                commune: currentProfile.commune,
+                arrondissement: currentProfile.arrondissement
+              })
+              .select('*')
+              .single();
+            if (newSchool) {
+              await supabase.from('profiles').update({ school_id: newSchool.id }).eq('id', activeUser.id);
+              currentSchool = newSchool;
+            }
+          }
+        }
+
+        if (currentSchool) {
+          setSchoolInfo(currentSchool);
+          
+          const [inventoryRes, reportsRes] = await Promise.all([
+            supabase.from('inventory').select('*').eq('school_id', currentSchool.id),
+            supabase.from('meal_reports').select('*, profiles(full_name)').eq('school_id', currentSchool.id).order('created_at', { ascending: false })
+          ]);
+
+          setRealInventory(inventoryRes.data || []);
+          setRecentReports(reportsRes.data || []);
+        } else if (currentProfile.school_id) {
+          const { data: school } = await supabase.from('schools').select('*').eq('id', currentProfile.school_id).single();
+          if (school) setSchoolInfo(school);
+        }
       }
     } catch (err) {
       console.error('Erreur fetching director data:', err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [initialUser, initialProfile, isValidated]);
 
   React.useEffect(() => {
     fetchData();
@@ -141,21 +196,45 @@ export default function DirectorDash({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!schoolInfo) {
+      alert('Erreur: Votre profil n\'est pas encore rattaché à un établissement. Veuillez contacter l\'administrateur.');
+      return;
+    }
     setIsSubmitting(true);
     try {
-      if (!schoolInfo) throw new Error("École non assignée");
-      
       const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Non authentifié");
 
-      const promises = formData.products.map(prod => {
+      const promises = formData.products.map(async (prod: any) => {
         const itemName = prod.item === 'Autre' ? prod.customItem : prod.item;
-        return supabase.from('inventory').upsert({
-          school_id: schoolInfo.id,
-          item_name: itemName,
-          quantity: prod.quantity,
-          unit: prod.unit,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'school_id,item_name' });
+        const qtyToAdd = Number(prod.quantity);
+
+        // Fetch existing first to add to it
+        const { data: existing } = await supabase
+          .from('inventory')
+          .select('*')
+          .eq('school_id', schoolInfo.id)
+          .eq('item_name', itemName)
+          .maybeSingle();
+
+        if (existing) {
+          return supabase
+            .from('inventory')
+            .update({ 
+               quantity: Number(existing.quantity) + qtyToAdd,
+               updated_at: new Date().toISOString()
+            })
+            .eq('id', existing.id);
+        } else {
+          return supabase
+            .from('inventory')
+            .insert({
+              school_id: schoolInfo.id,
+              item_name: itemName,
+              quantity: qtyToAdd,
+              unit: prod.unit
+            });
+        }
       });
 
       await Promise.all(promises);
@@ -182,13 +261,31 @@ export default function DirectorDash({
     }, 3000);
   };
 
-  const handleValidation = async () => {
+  const handleValidation = async (reportId: string) => {
     setIsSubmitting(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setDailyValidation({ ...dailyValidation, isValidated: true });
-    setIsSubmitting(false);
-    alert('Repas validé avec succès !');
-    setView('overview');
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Non authentifié");
+
+      const { error } = await supabase
+        .from('meal_reports')
+        .update({ 
+          is_validated: true, 
+          validated_by: user.id 
+        })
+        .eq('id', reportId);
+
+      if (error) throw error;
+      
+      alert('Repas validé avec succès !');
+      fetchData();
+      setView('overview');
+    } catch (err) {
+      console.error('Erreur validation repas:', err);
+      alert('Erreur lors de la validation.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const resetForm = () => {
@@ -444,22 +541,22 @@ export default function DirectorDash({
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-display font-bold text-slate-800">Gestion de l'École</h1>
-            <p className="text-slate-500">EPP Godomey Centre • Atlantique</p>
+            <p className="text-slate-500">{schoolInfo ? `${schoolInfo.name} • ${schoolInfo.department}` : 'En attente de rattachement école'}</p>
           </div>
           <div className="flex gap-3 flex-wrap">
             <Button 
-              disabled={!isValidated}
+              disabled={!isValidated || !schoolInfo}
               onClick={() => setView('register')} 
               variant="secondary" 
-              className={`rounded-xl font-bold flex items-center gap-2 ${!isValidated ? 'opacity-50 grayscale' : ''}`}
+              className={`rounded-xl font-bold flex items-center gap-2 ${(!isValidated || !schoolInfo) ? 'opacity-50 grayscale' : ''}`}
             >
               <Plus size={18} /> Enregistrer des Vivres
             </Button>
             <Button 
-              disabled={!isValidated}
+              disabled={!isValidated || !schoolInfo}
               onClick={() => setView('register_cook')} 
               variant="outline" 
-              className={`rounded-xl border-slate-300 text-slate-700 font-bold flex items-center gap-2 hover:bg-slate-50 ${!isValidated ? 'opacity-50 grayscale' : ''}`}
+              className={`rounded-xl border-slate-300 text-slate-700 font-bold flex items-center gap-2 hover:bg-slate-50 ${(!isValidated || !schoolInfo) ? 'opacity-50 grayscale' : ''}`}
             >
               <Users size={18} /> Inscrire un Cuisinier
             </Button>
@@ -632,82 +729,92 @@ export default function DirectorDash({
 
           {view === 'validate_meals' && (
             <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 text-left">
-               <div className="bg-white rounded-3xl border border-slate-100 shadow-xl overflow-hidden">
-                  <div className="bg-brand-green p-8 text-white flex items-center justify-between">
-                     <div>
-                        <h3 className="text-xl font-black uppercase">Validation du Service</h3>
-                        <p className="text-xs opacity-80 font-bold tracking-tight">Vérification des preuves quotidiennes</p>
-                     </div>
-                     <CheckCircle size={32} className="opacity-40" />
-                  </div>
-                  
-                  <div className="p-8 space-y-8">
-                    <div className="grid md:grid-cols-3 gap-6">
-                      <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                        <div className="text-[10px] font-black text-slate-400 uppercase mb-1">Élèves Déclarés</div>
-                        <div className="text-2xl font-black text-slate-800 flex items-center gap-2">
-                           <Users size={20} className="text-brand-green" />
-                           {dailyValidation.studentsCount}
-                        </div>
+               {recentReports.filter(r => !r.is_validated).length > 0 ? (
+                 recentReports.filter(r => !r.is_validated).map((report, idx) => (
+                   <div key={report.id} className="bg-white rounded-3xl border border-slate-100 shadow-xl overflow-hidden mb-8">
+                      <div className="bg-brand-green p-8 text-white flex items-center justify-between">
+                         <div>
+                            <h3 className="text-xl font-black uppercase">Validation du Service #{idx + 1}</h3>
+                            <p className="text-xs opacity-80 font-bold tracking-tight">Cuisinier : {report.profiles?.full_name || 'Inconnu'}</p>
+                         </div>
+                         <CheckCircle size={32} className="opacity-40" />
                       </div>
-                      <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                        <div className="text-[10px] font-black text-slate-400 uppercase mb-1">Repas Servis</div>
-                        <div className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                           <ChefHat size={20} className="text-brand-orange" />
-                           {dailyValidation.meal}
+                      
+                      <div className="p-8 space-y-8">
+                        <div className="grid md:grid-cols-3 gap-6">
+                          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                            <div className="text-[10px] font-black text-slate-400 uppercase mb-1">Élèves Déclarés</div>
+                            <div className="text-2xl font-black text-slate-800 flex items-center gap-2">
+                               <Users size={20} className="text-brand-green" />
+                               {report.students_count}
+                            </div>
+                          </div>
+                          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                            <div className="text-[10px] font-black text-slate-400 uppercase mb-1">Repas Servis</div>
+                            <div className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                               <ChefHat size={20} className="text-brand-orange" />
+                               {report.meal_description}
+                            </div>
+                          </div>
+                          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                            <div className="text-[10px] font-black text-slate-400 uppercase mb-1">Date d'envoi</div>
+                            <div className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                               <Clock size={20} className="text-blue-500" />
+                               {new Date(report.created_at).toLocaleDateString()}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                      <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                        <div className="text-[10px] font-black text-slate-400 uppercase mb-1">Heure d'envoi</div>
-                        <div className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                           <Clock size={20} className="text-blue-500" />
-                           {dailyValidation.timestamp}
-                        </div>
-                      </div>
-                    </div>
 
-                    <div className="space-y-4">
-                      <h4 className="text-xs font-black text-slate-400 uppercase pl-1">Preuves Photos</h4>
-                      <div className="grid grid-cols-2 gap-4">
-                        {dailyValidation.photos.map((photo, i) => (
-                           <motion.div 
-                            key={i} 
-                            whileHover={{ scale: 1.02 }}
-                            className="aspect-video rounded-3xl overflow-hidden border-2 border-slate-100 bg-slate-50"
-                           >
-                             <img src={photo} className="w-full h-full object-cover" alt="Preuve repas" />
-                           </motion.div>
-                        ))}
-                      </div>
-                    </div>
+                        <div className="space-y-4">
+                          <h4 className="text-xs font-black text-slate-400 uppercase pl-1">Preuves Photos</h4>
+                          <div className="grid grid-cols-2 gap-4">
+                            {report.photos?.map((photo: string, i: number) => (
+                               <motion.div 
+                                key={i} 
+                                whileHover={{ scale: 1.02 }}
+                                className="aspect-video rounded-3xl overflow-hidden border-2 border-slate-100 bg-slate-50"
+                               >
+                                 <img src={photo} className="w-full h-full object-cover" alt="Preuve repas" />
+                               </motion.div>
+                            ))}
+                          </div>
+                        </div>
 
-                    <div className="pt-6 border-t border-slate-100 flex gap-4">
-                      <Button 
-                        disabled={!isValidated}
-                        variant="ghost" 
-                        className="flex-1 rounded-2xl h-14 font-black uppercase text-xs tracking-widest text-red-500 hover:bg-red-50 disabled:bg-slate-50 disabled:text-slate-300"
-                        onClick={() => {
-                          alert('Demande de modification envoyée au cuisinier.');
-                          setView('overview');
-                        }}
-                      >
-                         Signaler erreur
-                      </Button>
-                      <Button 
-                        disabled={!isValidated}
-                        isLoading={isSubmitting}
-                        onClick={handleValidation}
-                        className={`flex-[2] rounded-2xl h-14 shadow-xl font-black uppercase text-xs tracking-widest ${
-                          isValidated 
-                          ? 'bg-brand-green hover:bg-brand-green/90 shadow-brand-green/20' 
-                          : 'bg-slate-300 text-white shadow-none cursor-not-allowed'
-                        }`}
-                      >
-                         Valider le rapport <CheckCircle className="ml-2" size={18} />
-                      </Button>
-                    </div>
-                  </div>
-               </div>
+                        <div className="pt-6 border-t border-slate-100 flex gap-4">
+                          <Button 
+                            disabled={!isValidated}
+                            variant="ghost" 
+                            className="flex-1 rounded-2xl h-14 font-black uppercase text-xs tracking-widest text-red-500 hover:bg-red-50 disabled:bg-slate-50 disabled:text-slate-300"
+                            onClick={() => {
+                              alert('Demande de modification envoyée au cuisinier.');
+                            }}
+                          >
+                             Signaler erreur
+                          </Button>
+                          <Button 
+                            disabled={!isValidated}
+                            isLoading={isSubmitting}
+                            onClick={() => handleValidation(report.id)}
+                            className={`flex-[2] rounded-2xl h-14 shadow-xl font-black uppercase text-xs tracking-widest ${
+                              isValidated 
+                              ? 'bg-brand-green hover:bg-brand-green/90 shadow-brand-green/20' 
+                              : 'bg-slate-300 text-white shadow-none cursor-not-allowed'
+                            }`}
+                          >
+                             Valider le rapport <CheckCircle className="ml-2" size={18} />
+                          </Button>
+                        </div>
+                      </div>
+                   </div>
+                 ))
+               ) : (
+                 <div className="bg-white p-12 rounded-3xl border border-slate-100 text-center shadow-xl">
+                   <CheckCircle className="text-brand-green mx-auto mb-4" size={48} />
+                   <h3 className="text-xl font-bold">Tous les rapports sont validés</h3>
+                   <p className="text-slate-500 mt-2">Aucun nouveau rapport de repas en attente de vérification.</p>
+                   <Button onClick={() => setView('overview')} className="mt-8 rounded-xl">Retour à l'accueil</Button>
+                 </div>
+               )}
             </div>
           )}
 
@@ -736,53 +843,63 @@ export default function DirectorDash({
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {inventory.map((item, i) => (
-                  <motion.div 
-                    key={i}
-                    whileHover={{ y: -4 }}
-                    className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4 flex flex-col justify-between"
-                  >
-                    <div className="space-y-4">
-                      <div className="flex justify-between items-start">
-                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl font-black ${
-                          item.status === 'optimal' ? 'bg-emerald-50 text-emerald-600' : 
-                          item.status === 'warning' ? 'bg-amber-50 text-amber-600' : 'bg-red-50 text-red-600'
-                        }`}>
-                          {item.name[0]}
+                {realInventory.length > 0 ? realInventory.map((item, i) => {
+                  const qty = Number(item.quantity);
+                  const status = qty > 100 ? 'optimal' : qty > 50 ? 'warning' : 'low';
+                  const level = Math.min(100, (qty / (item.item_name === 'Riz' ? 1000 : 500)) * 100);
+                  
+                  return (
+                    <motion.div 
+                      key={item.id}
+                      whileHover={{ y: -4 }}
+                      className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4 flex flex-col justify-between"
+                    >
+                      <div className="space-y-4">
+                        <div className="flex justify-between items-start">
+                          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl font-black ${
+                            status === 'optimal' ? 'bg-emerald-50 text-emerald-600' : 
+                            status === 'warning' ? 'bg-amber-50 text-amber-600' : 'bg-red-50 text-red-600'
+                          }`}>
+                            {item.item_name[0]}
+                          </div>
+                          <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${
+                            status === 'optimal' ? 'bg-emerald-100 text-emerald-600' : 
+                            status === 'warning' ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'
+                          }`}>
+                            {status}
+                          </div>
                         </div>
-                        <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${
-                          item.status === 'optimal' ? 'bg-emerald-100 text-emerald-600' : 
-                          item.status === 'warning' ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'
-                        }`}>
-                          {item.status}
+                        <div>
+                          <h4 className="font-bold text-slate-800 text-lg">{item.item_name}</h4>
+                          <div className="flex items-end gap-2 mt-1">
+                            <span className="text-2xl font-black text-slate-900">{qty}</span>
+                            <span className="text-slate-400 font-bold mb-1 uppercase text-xs">{item.unit}</span>
+                          </div>
+                        </div>
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between text-[8px] font-black uppercase text-slate-400">
+                            <span>Niveau</span>
+                            <span>{Math.round(level)}%</span>
+                          </div>
+                          <div className="h-1.5 bg-slate-50 rounded-full overflow-hidden">
+                            <div className={`h-full rounded-full ${
+                              status === 'optimal' ? 'bg-emerald-500' : 
+                              status === 'warning' ? 'bg-amber-500' : 'bg-red-500'
+                            }`} style={{ width: `${level}%` }} />
+                          </div>
                         </div>
                       </div>
-                      <div>
-                        <h4 className="font-bold text-slate-800 text-lg">{item.name}</h4>
-                        <div className="flex items-end gap-2 mt-1">
-                          <span className="text-2xl font-black text-slate-900">{item.quantity}</span>
-                          <span className="text-slate-400 font-bold mb-1 uppercase text-xs">{item.unit}</span>
-                        </div>
+                      <div className="pt-4 border-t border-slate-50 flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-tighter">
+                        <span>Dernière mise à jour</span>
+                        <span className="text-slate-600 font-black italic">{new Date(item.updated_at).toLocaleDateString()}</span>
                       </div>
-                      <div className="space-y-1.5">
-                        <div className="flex justify-between text-[8px] font-black uppercase text-slate-400">
-                          <span>Niveau</span>
-                          <span>{item.status === 'optimal' ? '85' : item.status === 'warning' ? '40' : '15'}%</span>
-                        </div>
-                        <div className="h-1.5 bg-slate-50 rounded-full overflow-hidden">
-                          <div className={`h-full rounded-full ${
-                            item.status === 'optimal' ? 'bg-emerald-500' : 
-                            item.status === 'warning' ? 'bg-amber-500' : 'bg-red-500'
-                          }`} style={{ width: item.status === 'optimal' ? '85%' : item.status === 'warning' ? '40%' : '15%' }} />
-                        </div>
-                      </div>
-                    </div>
-                    <div className="pt-4 border-t border-slate-50 flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-tighter">
-                      <span>Dernier arrivage</span>
-                      <span className="text-slate-600 font-black italic">12 Avril</span>
-                    </div>
-                  </motion.div>
-                ))}
+                    </motion.div>
+                  );
+                }) : (
+                  <div className="col-span-full py-12 bg-white rounded-3xl border border-dashed border-slate-200 text-center text-slate-400 italic">
+                    Aucun stock enregistré. Veuillez ajouter un premier arrivage.
+                  </div>
+                )}
               </div>
 
               <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8">

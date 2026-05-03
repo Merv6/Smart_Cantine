@@ -69,8 +69,29 @@ const deptStats = [
   { name: 'Ouémé', schools: 29, pupils: 4000, meals: '55k' },
 ];
 
-export default function AdminDash({ isValidated }: { isValidated: boolean }) {
-  const [activeTab, setActiveTab] = React.useState<'overview' | 'validations'>('overview');
+export default function AdminDash({ 
+  isValidated,
+  user: initialUser,
+  profile: initialProfile,
+  initialView = 'overview',
+  onViewChange
+}: { 
+  isValidated: boolean;
+  user?: any;
+  profile?: any;
+  initialView?: string;
+  onViewChange?: (view: any) => void;
+}) {
+  const [activeTab, setActiveTabInternal] = React.useState<string>(initialView);
+  
+  const setActiveTab = (newTab: string) => {
+    setActiveTabInternal(newTab);
+    if (onViewChange) onViewChange(newTab);
+  };
+
+  React.useEffect(() => {
+    setActiveTabInternal(initialView);
+  }, [initialView]);
   const [showNewSchoolModal, setShowNewSchoolModal] = React.useState(false);
   const [isLoadingUsers, setIsLoadingUsers] = React.useState(false);
   const [isProcessing, setIsProcessing] = React.useState<string | null>(null);
@@ -84,6 +105,7 @@ export default function AdminDash({ isValidated }: { isValidated: boolean }) {
   });
   
   const [deptStats, setDeptStats] = React.useState<any[]>([]);
+  const [schoolsList, setSchoolsList] = React.useState<any[]>([]);
   const [pendingUsers, setPendingUsers] = React.useState<any[]>([]);
   const [statsData, setStatsData] = React.useState({
     activeSchools: 0,
@@ -98,15 +120,33 @@ export default function AdminDash({ isValidated }: { isValidated: boolean }) {
   const fetchDashboardData = React.useCallback(async () => {
     setIsLoadingStats(true);
     try {
-      // 1. Fetch pending users
-      const { data: users, error: usersError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('is_validated', false)
+      // 1. Fetch pending validation requests
+      const { data: requests, error: requestsError } = await supabase
+        .from('validation_requests')
+        .select(`
+          id,
+          user_id,
+          full_name,
+          role_requested,
+          school_name,
+          document_url,
+          status,
+          created_at,
+          profiles (
+            id,
+            department,
+            commune,
+            arrondissement,
+            phone
+          )
+        `)
         .order('created_at', { ascending: false });
 
-      if (usersError) throw usersError;
-      setPendingUsers(users || []);
+      if (requestsError) throw requestsError;
+      
+      // Filter pending for the specific table, but we might want to see all in a real app
+      // For now, we stick to pending for the 'validations' tab logic
+      setPendingUsers(requests?.filter(r => r.status === 'pending') || []);
 
       // 2. Fetch stats
       const [schoolsRes, reportsRes, inventoryRes] = await Promise.all([
@@ -118,13 +158,15 @@ export default function AdminDash({ isValidated }: { isValidated: boolean }) {
       const schools = schoolsRes.data || [];
       const reports = reportsRes.data || [];
       
+      setSchoolsList(schools);
+
       const mealsCount = reports.length;
       const studentsSum = reports.reduce((acc, curr) => acc + (curr.students_count || 0), 0);
 
       setStatsData({
         activeSchools: schools.length,
         totalStudents: studentsSum,
-        pendingRequests: users?.length || 0,
+        pendingRequests: requests?.length || 0,
         totalMeals: mealsCount
       });
 
@@ -177,6 +219,27 @@ export default function AdminDash({ isValidated }: { isValidated: boolean }) {
 
   React.useEffect(() => {
     fetchDashboardData();
+
+    // Subscribe to new validation requests
+    const subscription = supabase
+      .channel('admin_requests_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'validation_requests'
+        },
+        () => {
+          console.log('🔄 Admin: Validation requests changed, refreshing...');
+          fetchDashboardData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, [fetchDashboardData]);
 
   const [pendingStocks, setPendingStocks] = React.useState([
@@ -192,17 +255,75 @@ export default function AdminDash({ isValidated }: { isValidated: boolean }) {
     { label: "Repas Total", value: statsData.totalMeals.toLocaleString(), icon: <CheckCircle className="text-emerald-500" />, trend: "Servis" },
   ];
 
-  const approveUser = async (userId: string) => {
-    setIsProcessing(userId);
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ is_validated: true })
-        .eq('id', userId);
+  const approveUser = async (requestId: string) => {
+    const request = pendingUsers.find(r => r.id === requestId);
+    if (!request) return;
 
-      if (error) throw error;
-      setPendingUsers(prev => prev.filter(u => u.id !== userId));
+    setIsProcessing(requestId);
+    try {
+      // 1. Chercher si l'école existe déjà
+      let schoolId = null;
+      if (request.school_name && request.role_requested !== 'super_admin') {
+        const { data: school } = await supabase
+          .from('schools')
+          .select('id')
+          .eq('name', request.school_name)
+          .maybeSingle();
+        
+        if (school) {
+          schoolId = school.id;
+        } else {
+          // Créer l'école si elle n'existe pas? 
+          // Pour la démo, on la crée automatiquement pour que le directeur ait un bureau fonctionnel
+          const { data: newSchool, error: schoolErr } = await supabase
+            .from('schools')
+            .insert({
+               name: request.school_name,
+               department: request.profiles?.department,
+               commune: request.profiles?.commune,
+               arrondissement: request.profiles?.arrondissement
+            })
+            .select('id')
+            .single();
+          
+          if (!schoolErr && newSchool) {
+            schoolId = newSchool.id;
+          }
+        }
+      }
+
+      // 2. Update validation request
+      const { error: reqError } = await supabase
+        .from('validation_requests')
+        .update({ status: 'approved' })
+        .eq('id', requestId);
+
+      if (reqError) throw reqError;
+
+      // 3. Update profile
+      const rawRole = request.role_requested || 'DIRECTOR';
+      let dbRole = 'DIRECTOR';
+      
+      if (rawRole.includes('ADMIN')) dbRole = 'SUPER_ADMIN';
+      else if (rawRole.includes('COOK')) dbRole = 'COOK';
+      else dbRole = 'DIRECTOR';
+
+      const { error: profError } = await supabase
+        .from('profiles')
+        .update({ 
+          is_validated: true,
+          role: dbRole,
+          school_id: schoolId
+        })
+        .eq('id', request.user_id);
+
+      if (profError) throw profError;
+
+      setPendingUsers(prev => prev.filter(r => r.id !== requestId));
       alert('Utilisateur validé avec succès !');
+      
+      // Refresh stats
+      fetchDashboardData();
     } catch (err) {
       console.error('Erreur validation:', err);
       alert('Erreur lors de la validation.');
@@ -211,20 +332,39 @@ export default function AdminDash({ isValidated }: { isValidated: boolean }) {
     }
   };
 
-  const rejectUser = async (userId: string) => {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer cette demande ?')) return;
-    setIsProcessing(userId);
+  const rejectUser = async (requestId: string) => {
+    if (!window.confirm('Êtes-vous sûr de vouloir rejeter cette demande ?')) return;
+    setIsProcessing(requestId);
     try {
-      // Pour une démo on supprime le profil ou on change un statut si dispo
       const { error } = await supabase
-        .from('profiles')
-        .delete()
-        .eq('id', userId);
+        .from('validation_requests')
+        .update({ status: 'rejected' })
+        .eq('id', requestId);
 
       if (error) throw error;
-      setPendingUsers(prev => prev.filter(u => u.id !== userId));
+      setPendingUsers(prev => prev.filter(r => r.id !== requestId));
+      fetchDashboardData();
     } catch (err) {
       console.error('Erreur rejet:', err);
+    } finally {
+      setIsProcessing(null);
+    }
+  };
+
+  const deleteRequest = async (requestId: string) => {
+    if (!window.confirm('Voulez-vous supprimer définitivement cette demande de la base de données ?')) return;
+    setIsProcessing(requestId);
+    try {
+      const { error } = await supabase
+        .from('validation_requests')
+        .delete()
+        .eq('id', requestId);
+
+      if (error) throw error;
+      setPendingUsers(prev => prev.filter(r => r.id !== requestId));
+      fetchDashboardData();
+    } catch (err) {
+      console.error('Erreur suppression:', err);
       alert('Erreur lors de la suppression.');
     } finally {
       setIsProcessing(null);
@@ -362,40 +502,38 @@ export default function AdminDash({ isValidated }: { isValidated: boolean }) {
         )}
       </AnimatePresence>
 
-      {/* Top Section */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-display font-bold text-slate-800">Tableau de Bord Super Admin</h1>
-          <p className="text-slate-500">Aperçu global de la nutrition scolaire au Bénin</p>
+          <h1 className="text-3xl font-display font-bold text-slate-800">
+            {activeTab === 'overview' && "Tableau de Bord Super Admin"}
+            {activeTab === 'validations' && "Validation des Demandes"}
+            {activeTab === 'schools' && "Gestion des Établissements"}
+            {activeTab === 'inventory' && "État des Stocks Nationaux"}
+            {activeTab === 'settings' && "Configuration Système"}
+          </h1>
+          <p className="text-slate-500">
+            {activeTab === 'overview' && "Aperçu global de la nutrition scolaire au Bénin"}
+            {activeTab === 'validations' && "Examinez et approuvez les nouveaux comptes et arrivages"}
+            {activeTab === 'schools' && "Suivi et paramétrage des écoles partenaires"}
+            {activeTab === 'inventory' && "Consultez les niveaux de vivres sur l'ensemble du territoire"}
+            {activeTab === 'settings' && "Gérez les paramètres globaux de la plateforme"}
+          </p>
         </div>
         <div className="flex gap-3">
-          <button 
-            onClick={() => setActiveTab(activeTab === 'overview' ? 'validations' : 'overview')}
-            className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${
-              activeTab === 'validations' 
-              ? 'bg-brand-orange text-white' 
-              : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
-            }`}
-          >
-            {activeTab === 'validations' ? <BarChart2 size={16} /> : <Clock size={16} />}
-            {activeTab === 'validations' ? 'Voir Stats' : `Validations (${pendingUsers.length})`}
-          </button>
-          <button 
-            disabled={!isValidated}
-            onClick={() => setShowNewSchoolModal(true)}
-            className={`px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition-all ${
-              isValidated 
-              ? 'bg-brand-green text-white hover:bg-brand-green/90 shadow-brand-green/20' 
-              : 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none'
-            }`}
-          >
-            Nouvelle École
-          </button>
+          {activeTab === 'schools' && (
+            <button 
+              disabled={!isValidated}
+              onClick={() => setShowNewSchoolModal(true)}
+              className={`px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition-all bg-brand-green text-white hover:bg-brand-green/90 shadow-brand-green/20`}
+            >
+              Nouvelle École
+            </button>
+          )}
         </div>
       </div>
 
       <AnimatePresence mode="wait">
-        {activeTab === 'overview' ? (
+        {activeTab === 'overview' && (
           <motion.div 
             key="overview"
             initial={{ opacity: 0, y: 10 }}
@@ -463,77 +601,10 @@ export default function AdminDash({ isValidated }: { isValidated: boolean }) {
                 </div>
               </div>
             </div>
-
-            <div className="grid lg:grid-cols-3 gap-8">
-              <div className="lg:col-span-2 bg-white p-8 rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-                <div className="flex items-center justify-between mb-8">
-                  <h3 className="text-lg font-bold">Statistiques par Département</h3>
-                  <FileText className="text-slate-400" size={18} />
-                </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                      <thead>
-                        <tr className="bg-slate-50">
-                          <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest pl-6">Département</th>
-                          <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Écoles</th>
-                          <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Élèves</th>
-                          <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right pr-6">Repas (Mois)</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-50">
-                        {deptStats.map((dept, i) => (
-                          <tr key={i} className="hover:bg-slate-50 transition-colors">
-                            <td className="px-4 py-4 font-bold text-slate-800 pl-6">{dept.name}</td>
-                            <td className="px-4 py-4 text-center text-sm font-bold text-slate-600">{dept.schools}</td>
-                            <td className="px-4 py-4 text-center text-sm font-bold text-brand-green">{dept.pupils.toLocaleString()}</td>
-                            <td className="px-4 py-4 text-right text-sm font-black text-slate-800 pr-6">{dept.meals}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                </div>
-              </div>
-
-              <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm">
-                <div className="flex items-center justify-between mb-8">
-                  <h3 className="text-lg font-bold">Distribution Thématique</h3>
-                  <Package size={18} className="text-slate-400" />
-                </div>
-                <div className="h-[200px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={globalInventory.length > 0 ? globalInventory : stockData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={60}
-                        outerRadius={80}
-                        paddingAngle={5}
-                        dataKey="value"
-                      >
-                        {(globalInventory.length > 0 ? globalInventory : stockData).map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="space-y-3 mt-6">
-                  {(globalInventory.length > 0 ? globalInventory : stockData).map((item, i) => (
-                    <div key={i} className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full" style={{backgroundColor: COLORS[i]}} />
-                        <span className="text-slate-600 font-bold">{item.name}</span>
-                      </div>
-                      <span className="font-black text-slate-800">{item.value} {item.unit || 'kg'}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
           </motion.div>
-        ) : (
+        )}
+
+        {activeTab === 'validations' && (
           <motion.div 
             key="validations"
             initial={{ opacity: 0, y: 10 }}
@@ -562,57 +633,70 @@ export default function AdminDash({ isValidated }: { isValidated: boolean }) {
                       <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Informations</th>
                       <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Localité</th>
                       <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Date demande</th>
+                      <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Justificatif</th>
                       <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
                     {isLoadingUsers ? (
                       <tr>
-                        <td colSpan={4} className="px-8 py-10 text-center">
+                        <td colSpan={5} className="px-8 py-10 text-center">
                           <Loader2 className="animate-spin mx-auto text-slate-300" size={32} />
                         </td>
                       </tr>
-                    ) : pendingUsers.map((user) => (
-                      <tr key={user.id} className="hover:bg-slate-50 transition-colors">
+                    ) : pendingUsers.map((request) => (
+                      <tr key={request.id} className="hover:bg-slate-50 transition-colors">
                         <td className="px-8 py-5">
                           <div className="flex items-center gap-4">
                             <div className="w-10 h-10 rounded-xl bg-brand-green/10 flex items-center justify-center font-black text-brand-green">
-                              {user.full_name?.split(' ').map((n:any)=>n[0]).join('') || '?'}
+                              {request.full_name?.split(' ').map((n:any)=>n[0]).join('') || '?'}
                             </div>
                             <div>
-                              <div className="font-black text-slate-800">{user.full_name}</div>
-                              <div className="text-xs text-slate-400 font-bold">{user.role} • {user.school || 'Non assigné'}</div>
+                              <div className="font-black text-slate-800">{request.full_name}</div>
+                              <div className="text-xs text-slate-400 font-bold">{request.role_requested} • {request.school_name || 'Non assigné'}</div>
                             </div>
                           </div>
                         </td>
                         <td className="px-8 py-5">
                            <div className="text-sm font-bold text-slate-600 italic">
-                             {user.department}, {user.commune}
+                             {request.profiles?.department || 'N/A'}, {request.profiles?.commune || 'N/A'}
                            </div>
-                           <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">{user.arrondissement}</div>
+                           <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">{request.profiles?.arrondissement || 'N/A'}</div>
                         </td>
                         <td className="px-8 py-5">
                            <div className="text-xs font-bold text-slate-500">
-                             {user.created_at ? new Date(user.created_at).toLocaleDateString() : 'N/A'}
+                             {request.created_at ? new Date(request.created_at).toLocaleDateString() : 'N/A'}
                            </div>
+                        </td>
+                        <td className="px-8 py-5 text-center">
+                           {request.document_url ? (
+                             <button 
+                               onClick={() => window.open(request.document_url, '_blank')}
+                               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-green/10 text-brand-green rounded-xl text-xs font-black uppercase hover:bg-brand-green hover:text-white transition-all shadow-sm"
+                             >
+                               <Eye size={14} /> Voir pièce
+                             </button>
+                           ) : (
+                             <span className="text-[10px] font-bold text-slate-300 uppercase tracking-tight">Aucun fichier</span>
+                           )}
                         </td>
                         <td className="px-8 py-5">
                           <div className="flex gap-2">
                             <button 
-                              disabled={isProcessing === user.id}
-                              onClick={() => approveUser(user.id)}
+                              disabled={isProcessing === request.id}
+                              onClick={() => approveUser(request.id)}
                               className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all shadow-sm bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white disabled:opacity-50`}
                               title="Valider le compte"
                             >
-                              {isProcessing === user.id ? <Loader2 className="animate-spin" size={18} /> : <Check size={20} />}
+                              {isProcessing === request.id ? <Loader2 className="animate-spin" size={18} /> : <Check size={20} />}
                             </button>
                             <button 
-                              disabled={isProcessing === user.id}
-                              onClick={() => rejectUser(user.id)}
+                              disabled={isProcessing === request.id}
+                              onClick={() => deleteRequest(request.id)}
                               className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all shadow-sm bg-red-50 text-red-500 hover:bg-red-500 hover:text-white disabled:opacity-50`}
                               title="Supprimer la demande"
                             >
-                              <Trash2 size={20} />
+                              {isProcessing === request.id ? <Loader2 className="animate-spin" size={18} /> : <Trash2 size={20} />}
                             </button>
                           </div>
                         </td>
@@ -620,7 +704,7 @@ export default function AdminDash({ isValidated }: { isValidated: boolean }) {
                     ))}
                     {!isLoadingUsers && pendingUsers.length === 0 && (
                       <tr>
-                        <td colSpan={4} className="px-8 py-20 text-center">
+                        <td colSpan={5} className="px-8 py-20 text-center">
                           <div className="flex flex-col items-center gap-3">
                             <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center">
                               <CheckCircle size={32} className="text-slate-200" />
@@ -634,70 +718,190 @@ export default function AdminDash({ isValidated }: { isValidated: boolean }) {
                 </table>
               </div>
             </div>
+          </motion.div>
+        )}
 
-            {/* Pending Validation: Stocks */}
-            <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-               <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-emerald-50/50">
-                <div className="flex items-center gap-3">
-                  <Package className="text-brand-green" size={24} />
-                  <div>
-                    <h3 className="text-lg font-bold">Validation des Arrivages de Stocks</h3>
-                    <p className="text-xs text-slate-400 font-bold uppercase">Réceptions déclarées par les directeurs</p>
+        {activeTab === 'schools' && (
+          <motion.div 
+            key="schools"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="space-y-8"
+          >
+            <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+                <div className="flex items-center justify-between mb-8">
+                  <h3 className="text-lg font-bold">Liste des Établissements ({schoolsList.length})</h3>
+                  <div className="flex gap-2">
+                    <input 
+                      type="text" 
+                      placeholder="Rechercher une école..." 
+                      className="px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs outline-none focus:ring-2 focus:ring-brand-green/20"
+                    />
                   </div>
                 </div>
-                <span className="bg-emerald-100 text-brand-green text-xs font-bold px-4 py-1.5 rounded-full uppercase tracking-wider">
-                  {pendingStocks.length} réceptions
-                </span>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="bg-slate-50">
+                          <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Nom de l'École</th>
+                          <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Département</th>
+                          <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Commune</th>
+                          <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {schoolsList.map((school, i) => (
+                          <tr key={school.id || i} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-6 py-4 font-bold text-slate-800">{school.name}</td>
+                            <td className="px-6 py-4 text-sm font-bold text-slate-600">{school.department}</td>
+                            <td className="px-6 py-4 text-center text-sm font-bold text-brand-green">{school.commune}</td>
+                            <td className="px-6 py-4 text-right">
+                              <button className="text-slate-400 hover:text-brand-green transition-colors">
+                                <Eye size={18} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                        {schoolsList.length === 0 && (
+                          <tr>
+                            <td colSpan={4} className="px-6 py-10 text-center text-slate-400">Aucune école trouvée.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                </div>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="bg-slate-50/30">
-                      <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">École / Directeur</th>
-                      <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Détails des Vivres</th>
-                      <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Heure Déclarée</th>
-                      <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50">
-                    {pendingStocks.map((stock) => (
-                      <tr key={stock.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-8 py-5">
-                          <div className="font-black text-slate-800">{stock.school}</div>
-                          <div className="text-xs text-slate-400 font-bold">Dir. {stock.director}</div>
-                        </td>
-                        <td className="px-8 py-5">
-                           <div className="text-sm font-bold text-slate-600 bg-slate-50 px-4 py-2 rounded-xl inline-block">
-                             {stock.products}
-                           </div>
-                        </td>
-                        <td className="px-8 py-5">
-                           <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
-                             <Clock size={12} /> {stock.date}
-                           </div>
-                        </td>
-                        <td className="px-8 py-5">
-                          <div className="flex gap-2">
-                             <Button onClick={() => approveStock(stock.id)} size="sm" className="bg-brand-green rounded-xl text-[10px] font-bold px-4 h-9">Approuver</Button>
-                             <Button variant="ghost" size="sm" className="text-red-500 hover:bg-red-50 rounded-xl text-[10px] font-bold px-4 h-9">Rejeter</Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    {pendingStocks.length === 0 && (
-                      <tr>
-                        <td colSpan={4} className="px-8 py-20 text-center">
-                          <div className="flex flex-col items-center gap-3">
-                            <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center">
-                              <CheckCircle size={32} className="text-slate-200" />
-                            </div>
-                            <p className="text-slate-400 font-bold text-sm">Tous les stocks sont à jour</p>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+          </motion.div>
+        )}
+
+        {activeTab === 'inventory' && (
+          <motion.div 
+            key="inventory"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="space-y-8"
+          >
+            <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm">
+                <div className="flex items-center justify-between mb-8">
+                  <h3 className="text-lg font-bold">Distribution Statistique des Vivres</h3>
+                  <Package size={18} className="text-slate-400" />
+                </div>
+                <div className="h-[300px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={globalInventory.length > 0 ? globalInventory : stockData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={80}
+                        outerRadius={100}
+                        paddingAngle={5}
+                        dataKey="value"
+                      >
+                        {(globalInventory.length > 0 ? globalInventory : stockData).map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mt-8">
+                  {(globalInventory.length > 0 ? globalInventory : stockData).map((item, i) => (
+                    <div key={i} className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-3 h-3 rounded-full" style={{backgroundColor: COLORS[i]}} />
+                        <span className="text-slate-400 text-[10px] font-black uppercase tracking-widest">{item.name}</span>
+                      </div>
+                      <div className="text-xl font-black text-slate-800">{item.value} {item.unit || 'kg'}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+          </motion.div>
+        )}
+
+        {activeTab === 'profile' && (
+          <motion.div 
+            key="profile"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="space-y-8"
+          >
+            <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm">
+              <h3 className="text-lg font-bold mb-6">Mon Profil Administrateur</h3>
+              <div className="space-y-8">
+                <div className="flex items-center gap-6">
+                  <div className="w-24 h-24 rounded-3xl bg-brand-green/10 flex items-center justify-center text-brand-green font-black text-3xl shadow-inner italic">
+                    SA
+                  </div>
+                  <div>
+                    <h4 className="text-2xl font-black text-slate-800 tracking-tight">Super Administrateur</h4>
+                    <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Ministère des Enseignements Maternel et Primaire</p>
+                    <div className="flex gap-2 mt-4">
+                      <span className="px-3 py-1 bg-brand-green/10 text-brand-green text-[10px] font-black uppercase rounded-full">Accès Total</span>
+                      <span className="px-3 py-1 bg-blue-50 text-blue-500 text-[10px] font-black uppercase rounded-full">Support Technique</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="grid md:grid-cols-2 gap-8 pt-8 border-t border-slate-50">
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Email de service</label>
+                      <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 font-bold text-slate-600">admin@memp.bj</div>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Numéro Personnel</label>
+                      <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 font-bold text-slate-600">+229 01 00 00 00 00</div>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                     <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Réseau Local</label>
+                      <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100 font-bold text-brand-green flex items-center gap-2">
+                        <div className="w-2 h-2 bg-brand-green rounded-full animate-pulse" />
+                        Connecté au VPN Gouvernemental
+                      </div>
+                    </div>
+                    <Button variant="ghost" className="w-full h-14 rounded-2xl border border-slate-100 text-slate-400 hover:text-red-500 font-black uppercase text-xs">Changer le mot de passe</Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {activeTab === 'settings' && (
+          <motion.div 
+            key="settings"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="space-y-8"
+          >
+            <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm">
+              <h3 className="text-lg font-bold mb-6">Paramètres de la Plateforme</h3>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                  <div>
+                    <div className="font-bold">Notifications Email</div>
+                    <div className="text-xs text-slate-400">Recevoir un rapport quotidien</div>
+                  </div>
+                  <div className="w-12 h-6 bg-brand-green rounded-full relative">
+                    <div className="absolute right-1 top-1 w-4 h-4 bg-white rounded-full shadow-sm" />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                  <div>
+                    <div className="font-bold">Maintenance Système</div>
+                    <div className="text-xs text-slate-400">Dernière sauvegarde: il y a 3h</div>
+                  </div>
+                  <Button size="sm" variant="outline" className="rounded-xl px-4 h-9">Lancer Sauvegarde</Button>
+                </div>
               </div>
             </div>
           </motion.div>
