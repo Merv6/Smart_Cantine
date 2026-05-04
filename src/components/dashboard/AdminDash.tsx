@@ -144,35 +144,35 @@ export default function AdminDash({
 
       if (requestsError) throw requestsError;
       
-      // Filter pending for the specific table, but we might want to see all in a real app
-      // For now, we stick to pending for the 'validations' tab logic
       setPendingUsers(requests?.filter(r => r.status === 'pending') || []);
 
       // 2. Fetch stats
-      const [schoolsRes, reportsRes, inventoryRes] = await Promise.all([
+      const [schoolsRes, reportsRes, inventoryRes, inventoryAuditRes] = await Promise.all([
         supabase.from('schools').select('*'),
-        supabase.from('meal_reports').select('students_count, school_id'),
-        supabase.from('inventory').select('item_name, quantity')
+        supabase.from('meal_reports').select('students_count, school_id, created_at'),
+        supabase.from('inventory').select('item_name, quantity, updated_at'),
+        supabase.from('inventory').select('item_name, quantity, updated_at, school_id, schools(name)').order('updated_at', { ascending: false }).limit(5)
       ]);
 
       const schools = schoolsRes.data || [];
       const reports = reportsRes.data || [];
+      const inventory = inventoryRes.data || [];
       
       setSchoolsList(schools);
 
       const mealsCount = reports.length;
-      const studentsSum = reports.reduce((acc, curr) => acc + (curr.students_count || 0), 0);
+      const studentsSum = reports.reduce((acc: number, curr: any) => acc + (curr.students_count || 0), 0);
 
       setStatsData({
         activeSchools: schools.length,
         totalStudents: studentsSum,
-        pendingRequests: requests?.length || 0,
+        pendingRequests: requests?.filter(r => r.status === 'pending').length || 0,
         totalMeals: mealsCount
       });
 
       // 3. Process inventory
       const invMap: { [key: string]: number } = {};
-      inventoryRes.data?.forEach(item => {
+      inventory.forEach(item => {
         invMap[item.item_name] = (invMap[item.item_name] || 0) + Number(item.quantity);
       });
       setGlobalInventory(Object.entries(invMap).map(([name, value]) => ({ name, value })).slice(0, 4));
@@ -200,15 +200,37 @@ export default function AdminDash({
         meals: stats.meals > 1000 ? (stats.meals / 1000).toFixed(1) + 'k' : stats.meals.toString()
       })));
 
-      // 4. Mock monthly data based on real reports count if available
-      // In a real app we'd group by month in the database
-      setMonthlyYield([
-        { name: 'Jan', meals: Math.floor(mealsCount * 0.1) },
-        { name: 'Fév', meals: Math.floor(mealsCount * 0.15) },
-        { name: 'Mar', meals: Math.floor(mealsCount * 0.2) },
-        { name: 'Avr', meals: Math.floor(mealsCount * 0.25) },
-        { name: 'Mai', meals: mealsCount },
-      ]);
+      // 5. Monthly Yield from REAL reports
+      const monthNames = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
+      const monthlyData: { [key: string]: number } = {};
+      
+      // Initialize last 6 months
+      const now = new Date();
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        monthlyData[monthNames[d.getMonth()]] = 0;
+      }
+
+      reports.forEach(r => {
+        const d = new Date(r.created_at);
+        const m = monthNames[d.getMonth()];
+        if (monthlyData[m] !== undefined) {
+          monthlyData[m]++;
+        }
+      });
+
+      setMonthlyYield(Object.entries(monthlyData).map(([name, meals]) => ({ name, meals })));
+
+      // 6. Stock Audit (Pending or recent stocks)
+      if (inventoryAuditRes.data) {
+        setPendingStocks(inventoryAuditRes.data.map((item: any) => ({
+          id: Math.random(),
+          director: "Directeur",
+          school: item.schools?.name || "École",
+          products: `${item.quantity} ${item.item_name}`,
+          date: new Date(item.updated_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+        })));
+      }
 
     } catch (err) {
       console.error('Erreur dashboard data:', err);
@@ -242,11 +264,7 @@ export default function AdminDash({
     };
   }, [fetchDashboardData]);
 
-  const [pendingStocks, setPendingStocks] = React.useState([
-    { id: 1, director: "Julien Dossou", school: "EPP Godomey Centre", products: "500kg Riz, 200kg Maïs", date: "Ce matin, 09:12" },
-    { id: 2, director: "Léontine Agossa", school: "EPP Akpakpa B", products: "100L Huile de palme", date: "Hier, 16:45" },
-    { id: 3, director: "Benoit Adjayi", school: "EPP Porto-Novo 3", products: "300kg Haricot, 50kg Sel", date: "Hier, 14:20" },
-  ]);
+  const [pendingStocks, setPendingStocks] = React.useState<any[]>([]);
 
   const stats = [
     { label: "Écoles Actives", value: statsData.activeSchools.toString(), icon: <School className="text-brand-green" />, trend: "Total" },

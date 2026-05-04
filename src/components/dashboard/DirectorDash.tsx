@@ -545,18 +545,30 @@ export default function DirectorDash({
           </div>
           <div className="flex gap-3 flex-wrap">
             <Button 
-              disabled={!isValidated || !schoolInfo}
-              onClick={() => setView('register')} 
+              disabled={!isValidated}
+              onClick={() => {
+                if (!schoolInfo) {
+                  alert("Votre compte est validé, mais votre établissement n'est pas encore configuré. Veuillez contacter l'administrateur.");
+                  return;
+                }
+                setView('register');
+              }} 
               variant="secondary" 
-              className={`rounded-xl font-bold flex items-center gap-2 ${(!isValidated || !schoolInfo) ? 'opacity-50 grayscale' : ''}`}
+              className={`rounded-xl font-bold flex items-center gap-2 ${!isValidated ? 'opacity-50 grayscale' : ''}`}
             >
               <Plus size={18} /> Enregistrer des Vivres
             </Button>
             <Button 
-              disabled={!isValidated || !schoolInfo}
-              onClick={() => setView('register_cook')} 
+              disabled={!isValidated}
+              onClick={() => {
+                if (!schoolInfo) {
+                  alert("Votre compte est validé, mais votre établissement n'est pas encore configuré. Veuillez contacter l'administrateur.");
+                  return;
+                }
+                setView('register_cook');
+              }} 
               variant="outline" 
-              className={`rounded-xl border-slate-300 text-slate-700 font-bold flex items-center gap-2 hover:bg-slate-50 ${(!isValidated || !schoolInfo) ? 'opacity-50 grayscale' : ''}`}
+              className={`rounded-xl border-slate-300 text-slate-700 font-bold flex items-center gap-2 hover:bg-slate-50 ${!isValidated ? 'opacity-50 grayscale' : ''}`}
             >
               <Users size={18} /> Inscrire un Cuisinier
             </Button>
@@ -603,19 +615,21 @@ export default function DirectorDash({
               <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
                 <div className="md:col-span-8 bg-gradient-to-br from-brand-green to-emerald-600 rounded-[2.5rem] p-8 text-white relative overflow-hidden shadow-xl shadow-brand-green/20">
                   <div className="relative z-10 space-y-6">
-                    <div className="bg-white/20 backdrop-blur-md w-fit px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest">Aujourd'hui • 27 Avril</div>
+                    <div className="bg-white/20 backdrop-blur-md w-fit px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest">
+                      {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                    </div>
                     <div className="space-y-1">
-                      <h2 className="text-3xl font-black font-display leading-tight">Bonjour, M. DOSSOU</h2>
-                      <p className="text-emerald-50 opacity-90 max-w-md font-medium">Tout est en ordre à l'EPP Godomey Centre. 420 élèves attendent leur repas.</p>
+                      <h2 className="text-3xl font-black font-display leading-tight">Bonjour, {initialProfile?.full_name || 'Directeur'}</h2>
+                      <p className="text-emerald-50 opacity-90 max-w-md font-medium">Tout est en ordre à {schoolInfo?.name || 'votre établissement'}. {schoolInfo?.capacity || '---'} élèves attendent leur repas.</p>
                     </div>
                     <div className="flex gap-4 pt-4">
                       <div className="bg-white/10 backdrop-blur-sm p-4 rounded-3xl border border-white/10 flex-1">
-                        <div className="text-[10px] font-black text-emerald-100 uppercase mb-1">Repas du jour</div>
-                        <div className="font-bold">Riz sauce arachide</div>
+                        <div className="text-[10px] font-black text-emerald-100 uppercase mb-1">Dernier repas servi</div>
+                        <div className="font-bold">{recentReports[0]?.meal_description || 'Aucun repas enregistré'}</div>
                       </div>
                       <div className="bg-white/10 backdrop-blur-sm p-4 rounded-3xl border border-white/10 flex-1">
-                        <div className="text-[10px] font-black text-emerald-100 uppercase mb-1">Heure de service</div>
-                        <div className="font-bold">12:30 - 13:45</div>
+                        <div className="text-[10px] font-black text-emerald-100 uppercase mb-1">Dernière validation</div>
+                        <div className="font-bold">{recentReports.find(r => r.is_validated)?.updated_at ? new Date(recentReports.find(r => r.is_validated).updated_at).toLocaleDateString() : 'En attente'}</div>
                       </div>
                     </div>
                   </div>
@@ -663,23 +677,23 @@ export default function DirectorDash({
                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
                     <div className="space-y-2">
                       <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Repas</div>
-                      <div className="text-3xl font-black text-slate-800">12,450</div>
-                      <div className="text-[10px] text-emerald-500 font-black">+14%</div>
+                      <div className="text-3xl font-black text-slate-800">{recentReports.length.toLocaleString()}</div>
+                      <div className="text-[10px] text-emerald-500 font-black">Historique total</div>
                     </div>
                     <div className="space-y-2">
-                       <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Taux Participation</div>
-                       <div className="text-3xl font-black text-slate-800">98.2%</div>
-                       <div className="text-[10px] text-emerald-500 font-black">Stable</div>
+                       <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Élèves nourris</div>
+                       <div className="text-3xl font-black text-slate-800">{recentReports.reduce((acc, curr) => acc + (curr.students_count || 0), 0).toLocaleString()}</div>
+                       <div className="text-[10px] text-emerald-500 font-black">Cumulatif</div>
                     </div>
                     <div className="space-y-2">
                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Vivres Reçus</div>
-                       <div className="text-3xl font-black text-slate-800">2.4<span className="text-sm">t</span></div>
-                       <div className="text-[10px] text-blue-500 font-black">Livré le 12/04</div>
+                       <div className="text-3xl font-black text-slate-800">{realInventory.reduce((acc, curr) => acc + (Number(curr.quantity) || 0), 0).toLocaleString()} <span className="text-sm">kg/L</span></div>
+                       <div className="text-[10px] text-blue-500 font-black">Stock actuel</div>
                     </div>
                     <div className="space-y-2">
-                       <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Budget Économisé</div>
-                       <div className="text-3xl font-black text-slate-800">52k</div>
-                       <div className="text-[10px] text-emerald-500 font-black">Réduction pertes</div>
+                       <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Validations</div>
+                       <div className="text-3xl font-black text-slate-800">{recentReports.filter(r => r.is_validated).length}</div>
+                       <div className="text-[10px] text-emerald-500 font-black">Approuvés</div>
                     </div>
                   </div>
                   <div className="h-2 bg-slate-50 rounded-full overflow-hidden">
@@ -697,29 +711,24 @@ export default function DirectorDash({
                       <h3 className="font-bold text-lg">Validation Rapide</h3>
                     </div>
                     <div className="space-y-4">
-                      {!dailyValidation.isValidated ? (
+                      {recentReports.filter(r => !r.is_validated).length > 0 ? (
                         <>
-                          <p className="text-sm text-slate-400 font-medium leading-relaxed">Les photos du service de ce midi ont été transmises par le cuisinier.</p>
+                          <p className="text-sm text-slate-400 font-medium leading-relaxed">Les photos du service ont été transmises et attendent votre validation.</p>
                           <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center justify-between">
-                            <div className="text-xs font-bold text-slate-300">2 Photos reçues</div>
-                            <div className="flex -space-x-2">
-                              {dailyValidation.photos.map((p, i) => (
-                                <img key={i} src={p} className="w-6 h-6 rounded-full border border-slate-900 object-cover" />
-                              ))}
-                            </div>
+                            <div className="text-xs font-bold text-slate-300">{recentReports.filter(r => !r.is_validated).length} rapport(s) en attente</div>
                           </div>
                         </>
                       ) : (
                         <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 text-center">
                           <CheckCircle className="text-emerald-500 mx-auto mb-2" size={24} />
-                          <div className="text-sm font-bold text-emerald-400">Repas Validé</div>
+                          <div className="text-sm font-bold text-emerald-400">À jour</div>
                         </div>
                       )}
                     </div>
                   </div>
-                  {!dailyValidation.isValidated && (
+                  {recentReports.filter(r => !r.is_validated).length > 0 && (
                     <Button onClick={() => setView('validate_meals')} className="w-full bg-brand-orange hover:bg-brand-orange/90 rounded-2xl py-6 font-black uppercase text-xs tracking-widest">
-                      Vérifier preuves
+                      Vérifier {recentReports.filter(r => !r.is_validated).length} preuve(s)
                     </Button>
                   )}
                 </div>
@@ -976,11 +985,13 @@ export default function DirectorDash({
                     <div className="space-y-4">
                       <div className="p-4 bg-white rounded-2xl border border-brand-green/10 shadow-sm">
                         <div className="text-[10px] font-black text-slate-400 uppercase mb-1">Localisation</div>
-                        <p className="text-sm font-bold text-slate-700 leading-tight">Abomey-Calavi, Godomey Centre (Groupe A)</p>
+                        <p className="text-sm font-bold text-slate-700 leading-tight">
+                          {schoolInfo?.department || initialProfile?.department || '---'}, {schoolInfo?.commune || initialProfile?.commune || '---'}
+                        </p>
                       </div>
                       <div className="p-4 bg-white rounded-2xl border border-brand-green/10 shadow-sm">
-                        <div className="text-[10px] font-black text-slate-400 uppercase mb-1">Capacité & Effectif</div>
-                        <p className="text-sm font-bold text-slate-700">452 Élèves / 500 Places</p>
+                        <div className="text-[10px] font-black text-slate-400 uppercase mb-1">Effectif</div>
+                        <p className="text-sm font-bold text-slate-700">{schoolInfo?.capacity || '---'} Élèves</p>
                       </div>
                       <div className="p-4 bg-white rounded-2xl border border-brand-green/10 shadow-sm">
                         <div className="text-[10px] font-black text-slate-400 uppercase mb-1">Prochaine Inspection</div>
@@ -1064,22 +1075,19 @@ export default function DirectorDash({
                 <div className="flex flex-col md:flex-row items-center gap-8 -mt-20 md:-mt-16 mb-8">
                   <div className="relative group">
                     <div className="w-32 h-32 rounded-[2rem] bg-slate-100 border-4 border-white shadow-xl flex items-center justify-center text-4xl font-black text-slate-300">
-                      JD
+                      {initialProfile?.full_name?.split(' ').map((n:any)=>n[0]).join('') || 'U'}
                     </div>
                     <button className="absolute -bottom-2 -right-2 w-10 h-10 bg-brand-green text-white rounded-2xl border-4 border-white shadow-lg flex items-center justify-center hover:scale-110 transition-transform">
                       <Camera size={16} />
                     </button>
-                  </div>
-                  <div className="text-center md:text-left space-y-2 mt-4 md:mt-0">
-                    <h2 className="text-3xl font-black font-display text-slate-800">Julien DOSSOU</h2>
+                                   <h2 className="text-3xl font-black font-display text-slate-800">{initialProfile?.full_name || 'Utilisateur'}</h2>
                     <div className="flex flex-wrap justify-center md:justify-start gap-2">
-                      <span className="px-3 py-1 bg-brand-green/10 text-brand-green rounded-full text-[10px] font-black uppercase">Directeur d'Établissement</span>
-                      <span className="px-3 py-1 bg-slate-100 text-slate-500 rounded-full text-[10px] font-black uppercase">ID: SC-2024-001</span>
+                      <span className="px-3 py-1 bg-brand-green/10 text-brand-green rounded-full text-[10px] font-black uppercase">{initialProfile?.role || 'Rôle'}</span>
+                      <span className="px-3 py-1 bg-slate-100 text-slate-500 rounded-full text-[10px] font-black uppercase">ID: {initialProfile?.id?.slice(0, 8) || '---'}</span>
                     </div>
                   </div>
                   <div className="md:ml-auto flex gap-3">
                     <Button variant="outline" className="rounded-2xl h-12 font-bold">Modifier Infos</Button>
-                    <Button className="bg-brand-orange hover:bg-brand-orange/90 rounded-2xl h-12 font-bold px-8 shadow-lg shadow-brand-orange/20">Aide & Support</Button>
                   </div>
                 </div>
 
@@ -1089,11 +1097,11 @@ export default function DirectorDash({
                     <div className="grid gap-4">
                       <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
                         <div className="text-[10px] font-black text-slate-400 uppercase mb-1">Email Professionnel</div>
-                        <div className="font-bold text-slate-800">j.dossou@ecole.bj</div>
+                        <div className="font-bold text-slate-800">{initialUser?.email || 'N/A'}</div>
                       </div>
                       <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
                         <div className="text-[10px] font-black text-slate-400 uppercase mb-1">Téléphone</div>
-                        <div className="font-bold text-slate-800">+229 97 00 00 00</div>
+                        <div className="font-bold text-slate-800">{initialProfile?.phone || 'N/A'}</div>
                       </div>
                     </div>
                   </div>
@@ -1102,11 +1110,11 @@ export default function DirectorDash({
                     <div className="grid gap-4">
                       <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
                         <div className="text-[10px] font-black text-slate-400 uppercase mb-1">École Affectée</div>
-                        <div className="font-bold text-slate-800">EPP Godomey Centre (Groupe A)</div>
+                        <div className="font-bold text-slate-800">{schoolInfo?.name || initialProfile?.school || 'Non affecté'}</div>
                       </div>
                       <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
-                        <div className="text-[10px] font-black text-slate-400 uppercase mb-1">Ancienneté</div>
-                        <div className="font-bold text-slate-800">Assigné le 12 Septembre 2023</div>
+                        <div className="text-[10px] font-black text-slate-400 uppercase mb-1">Localisation</div>
+                        <div className="font-bold text-slate-800">{schoolInfo?.department || initialProfile?.department || '---'}, {schoolInfo?.commune || initialProfile?.commune || '---'}</div>
                       </div>
                     </div>
                   </div>
@@ -1114,11 +1122,10 @@ export default function DirectorDash({
 
                 <div className="mt-12 pt-8 border-t border-slate-50">
                    <div className="flex items-center justify-between mb-6">
-                     <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest">Ma Signature Numérique</h3>
-                     <Button variant="ghost" size="sm" className="text-brand-green font-bold">Mettre à jour</Button>
+                     <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest">Ma Signature</h3>
                    </div>
                    <div className="aspect-[4/1] md:w-64 bg-slate-50 rounded-3xl border border-dashed border-slate-200 flex items-center justify-center text-slate-300 font-display italic text-2xl font-black">
-                      J. Dossou
+                      {initialProfile?.full_name || 'Signature'}
                    </div>
                 </div>
               </div>

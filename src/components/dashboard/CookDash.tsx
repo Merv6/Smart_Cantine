@@ -47,8 +47,27 @@ export default function CookDash({
         setSchoolId(profile.school_id);
         
         if (profile.school_id) {
-          const { data: inv } = await supabase.from('inventory').select('*').eq('school_id', profile.school_id);
-          if (inv) setRealInventory(inv);
+          const [invRes, reportsRes] = await Promise.all([
+            supabase.from('inventory').select('*').eq('school_id', profile.school_id),
+            supabase.from('meal_reports')
+              .select('created_at')
+              .eq('school_id', profile.school_id)
+              .gte('created_at', new Date(new Date().setDate(new Date().getDate() - 7)).toISOString())
+          ]);
+
+          if (invRes.data) setRealInventory(invRes.data);
+          
+          if (reportsRes.data) {
+            const progress = [false, false, false, false, false];
+            reportsRes.data.forEach(r => {
+              const d = new Date(r.created_at);
+              const day = d.getDay(); // 0 is Sunday, 1 is Monday
+              if (day >= 1 && day <= 5) {
+                progress[day - 1] = true;
+              }
+            });
+            setWeekProgress(progress);
+          }
         }
       }
     }
@@ -73,7 +92,7 @@ export default function CookDash({
     }
   }, [realInventory]);
   
-  const [weekProgress, setWeekProgress] = React.useState([true, true, false, false, false]); // Mon-Tue completed
+  const [weekProgress, setWeekProgress] = React.useState([false, false, false, false, false]); // Mon-Fri status
 
   const handlePhotoUpload = (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -260,9 +279,15 @@ export default function CookDash({
                       )}
 
                       <Button 
-                        disabled={!isValidated || !isStep1Valid || !schoolId}
-                        onClick={() => setStep(2)} 
-                        className={`w-full rounded-xl py-6 ${(!isValidated || !schoolId) ? 'bg-slate-300 text-white cursor-not-allowed shadow-none' : ''}`}
+                        disabled={!isValidated || !isStep1Valid}
+                        onClick={() => {
+                          if (!schoolId) {
+                            alert("Votre compte est validé, mais votre établissement n'est pas encore configuré. Veuillez contacter votre directeur.");
+                            return;
+                          }
+                          setStep(2);
+                        }} 
+                        className={`w-full rounded-xl py-6 ${!isValidated ? 'bg-slate-300 text-white cursor-not-allowed shadow-none' : ''}`}
                       >
                         Suivant <ArrowRight className="ml-2" size={18} />
                       </Button>
