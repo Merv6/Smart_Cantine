@@ -259,7 +259,7 @@ export default function AdminDash({
     const request = pendingUsers.find(r => r.id === requestId);
     if (!request) return;
 
-    setIsProcessing(requestId);
+    setIsProcessing(`approve-${requestId}`);
     try {
       // Supabase can return profiles as an object or an array of one element
       const profileData = Array.isArray(request.profiles) ? request.profiles[0] : request.profiles;
@@ -309,26 +309,40 @@ export default function AdminDash({
       if (reqError) throw new Error(`Erreur validation_requests: ${reqError.message}`);
 
       // 3. Update profile
-      let dbRole = 'DIRECTOR';
+      let dbRole: 'SUPER_ADMIN' | 'DIRECTOR' | 'COOK' = 'DIRECTOR';
       
-      if (normalizedRole.includes('ADMIN')) dbRole = 'SUPER_ADMIN';
-      else if (normalizedRole.includes('COOK')) dbRole = 'COOK';
-      else if (normalizedRole.includes('DIRECTOR') || normalizedRole.includes('DIRECTEUR')) dbRole = 'DIRECTOR';
-      else dbRole = 'DIRECTOR';
+      const roleUpper = (request.role_requested || '').toUpperCase();
+      if (roleUpper.includes('ADMIN')) {
+        dbRole = 'SUPER_ADMIN';
+      } else if (roleUpper.includes('COOK') || roleUpper.includes('CUISIN')) {
+        dbRole = 'COOK';
+      } else if (roleUpper.includes('DIRECTOR') || roleUpper.includes('DIRECTEUR')) {
+        dbRole = 'DIRECTOR';
+      } else {
+        dbRole = 'DIRECTOR'; 
+      }
 
-      console.log(`Validation de ${request.full_name}: Role=${dbRole}, SchoolId=${schoolId}`);
+      console.log('--- FINAL VALIDATION ATTEMPT ---');
+      console.log('Target User ID:', request.user_id);
+      console.log('Mapped Role:', dbRole);
+
+      // Force the values to match the EXACT strings in the DB constraint
+      const roleToSet = dbRole === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : (dbRole === 'COOK' ? 'COOK' : 'DIRECTOR');
 
       const { error: profError } = await supabase
         .from('profiles')
         .update({ 
           is_validated: true,
-          role: dbRole,
+          role: roleToSet,
           school_id: schoolId,
           school: request.school_name
         })
         .eq('id', request.user_id);
 
-      if (profError) throw new Error(`Erreur profiles: ${profError.message}`);
+      if (profError) {
+        console.error('Database Constraint Error Details:', profError);
+        throw profError;
+      }
 
       setPendingUsers(prev => prev.filter(r => r.id !== requestId));
       alert(`L'utilisateur ${request.full_name} a été validé en tant que ${dbRole} ! Son dashboard sera mis à jour instantanément.`);
@@ -345,7 +359,7 @@ export default function AdminDash({
 
   const rejectUser = async (requestId: string) => {
     if (!window.confirm('Êtes-vous sûr de vouloir rejeter cette demande ?')) return;
-    setIsProcessing(requestId);
+    setIsProcessing(`reject-${requestId}`);
     try {
       const { error } = await supabase
         .from('validation_requests')
@@ -364,7 +378,7 @@ export default function AdminDash({
 
   const deleteRequest = async (requestId: string) => {
     if (!window.confirm('Voulez-vous supprimer définitivement cette demande de la base de données ?')) return;
-    setIsProcessing(requestId);
+    setIsProcessing(`delete-${requestId}`);
     try {
       const { error } = await supabase
         .from('validation_requests')
@@ -694,20 +708,28 @@ export default function AdminDash({
                         <td className="px-8 py-5">
                           <div className="flex gap-2">
                             <button 
-                              disabled={isProcessing === request.id}
+                              disabled={!!isProcessing}
                               onClick={() => approveUser(request.id)}
                               className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all shadow-sm bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white disabled:opacity-50`}
                               title="Valider le compte"
                             >
-                              {isProcessing === request.id ? <Loader2 className="animate-spin" size={18} /> : <Check size={20} />}
+                              {isProcessing === `approve-${request.id}` ? (
+                                <Loader2 className="animate-spin" size={18} />
+                              ) : (
+                                <Check size={20} />
+                              )}
                             </button>
                             <button 
-                              disabled={isProcessing === request.id}
+                              disabled={!!isProcessing}
                               onClick={() => deleteRequest(request.id)}
                               className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all shadow-sm bg-red-50 text-red-500 hover:bg-red-500 hover:text-white disabled:opacity-50`}
                               title="Supprimer la demande"
                             >
-                              {isProcessing === request.id ? <Loader2 className="animate-spin" size={18} /> : <Trash2 size={20} />}
+                              {isProcessing === `delete-${request.id}` ? (
+                                <Loader2 className="animate-spin" size={18} />
+                              ) : (
+                                <Trash2 size={20} />
+                              )}
                             </button>
                           </div>
                         </td>

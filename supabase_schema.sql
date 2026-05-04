@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS public.schools (
 CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
   full_name TEXT,
-  role TEXT CHECK (role IN ('SUPER_ADMIN', 'DIRECTOR', 'COOK')),
+  role TEXT CHECK (role IS NULL OR role IN ('SUPER_ADMIN', 'DIRECTOR', 'COOK')),
   phone TEXT,
   department TEXT,
   commune TEXT,
@@ -23,12 +23,19 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Migration pour ajouter school_id si profiles existe déjà
+-- Migrations pour la table profiles
 DO $$ 
 BEGIN 
+  -- Ajouter school_id si manquant
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='profiles' AND column_name='school_id') THEN
     ALTER TABLE public.profiles ADD COLUMN school_id UUID REFERENCES public.schools(id);
   END IF;
+  
+  -- Assouplir la contrainte de rôle
+  IF EXISTS (SELECT 1 FROM information_schema.constraint_column_usage WHERE table_name = 'profiles' AND constraint_name = 'profiles_role_check') THEN
+    ALTER TABLE public.profiles DROP CONSTRAINT profiles_role_check;
+  END IF;
+  ALTER TABLE public.profiles ADD CONSTRAINT profiles_role_check CHECK (role IS NULL OR role IN ('SUPER_ADMIN', 'DIRECTOR', 'COOK'));
 END $$;
 
 CREATE TABLE IF NOT EXISTS public.validation_requests (
@@ -99,12 +106,26 @@ $$ LANGUAGE sql SECURITY DEFINER;
 -- 3. TRIGGER POUR CRÉATION DE PROFIL AUTOMATIQUE
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
+DECLARE
+  initial_role TEXT;
 BEGIN
+  -- Tenter de mapper le rôle fourni ou mettre NULL
+  initial_role := NEW.raw_user_meta_data->>'role';
+  
+  -- Normalisation au cas où le client envoie des minuscules ou des espaces
+  IF initial_role IS NOT NULL THEN
+    initial_role := UPPER(TRIM(initial_role));
+    -- Si le rôle n'est pas dans la liste autorisée, on le met à NULL (ou DIRECTOR par défaut)
+    IF initial_role NOT IN ('SUPER_ADMIN', 'DIRECTOR', 'COOK') THEN
+      initial_role := NULL;
+    END IF;
+  END IF;
+
   INSERT INTO public.profiles (id, full_name, role, is_validated)
   VALUES (
     NEW.id,
     COALESCE(NEW.raw_user_meta_data->>'full_name', ''),
-    NEW.raw_user_meta_data->>'role', -- Sera NULL si non fourni lors de l'enregistrement simple
+    initial_role,
     COALESCE((NEW.raw_user_meta_data->>'is_validated')::boolean, false)
   );
   RETURN NEW;
