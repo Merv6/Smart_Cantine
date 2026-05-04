@@ -65,12 +65,14 @@ ON CONFLICT (id) DO NOTHING;
 
 -- Politiques de sécurité pour le stockage
 -- Autoriser les utilisateurs authentifiés à uploader des fichiers
+DROP POLICY IF EXISTS "Permettre l'upload aux authentifiés" ON storage.objects;
 CREATE POLICY "Permettre l'upload aux authentifiés" 
 ON storage.objects FOR INSERT 
 TO authenticated 
 WITH CHECK (bucket_id = 'proofs');
 
 -- Autoriser tout le monde à voir les fichiers (public: true ci-dessus)
+DROP POLICY IF EXISTS "Accès public en lecture" ON storage.objects;
 CREATE POLICY "Accès public en lecture" 
 ON storage.objects FOR SELECT 
 TO public 
@@ -107,27 +109,47 @@ $$ LANGUAGE sql SECURITY DEFINER;
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 DECLARE
-  initial_role TEXT;
+  meta JSONB;
+  role_at TEXT;
+  name_at TEXT;
+  is_val BOOLEAN;
 BEGIN
-  -- Tenter de mapper le rôle fourni ou mettre NULL
-  initial_role := NEW.raw_user_meta_data->>'role';
+  meta := NEW.raw_user_meta_data;
   
-  -- Normalisation au cas où le client envoie des minuscules ou des espaces
-  IF initial_role IS NOT NULL THEN
-    initial_role := UPPER(TRIM(initial_role));
-    -- Si le rôle n'est pas dans la liste autorisée, on le met à NULL (ou DIRECTOR par défaut)
-    IF initial_role NOT IN ('SUPER_ADMIN', 'DIRECTOR', 'COOK') THEN
-      initial_role := NULL;
-    END IF;
+  -- S'assurer que meta n'est pas null pour les extractions
+  IF meta IS NULL THEN
+    meta := '{}'::jsonb;
   END IF;
 
+  role_at := UPPER(TRIM(meta->>'role'));
+  IF role_at NOT IN ('SUPER_ADMIN', 'DIRECTOR', 'COOK') THEN
+    role_at := NULL;
+  END IF;
+
+  name_at := COALESCE(meta->>'full_name', meta->>'name', '');
+  
+  is_val := CASE 
+    WHEN meta->>'is_validated' = 'true' THEN true 
+    ELSE false 
+  END;
+
   INSERT INTO public.profiles (id, full_name, role, is_validated)
-  VALUES (
-    NEW.id,
-    COALESCE(NEW.raw_user_meta_data->>'full_name', ''),
-    initial_role,
-    COALESCE((NEW.raw_user_meta_data->>'is_validated')::boolean, false)
-  );
+  VALUES (NEW.id, name_at, role_at, is_val)
+  ON CONFLICT (id) DO UPDATE SET
+    full_name = EXCLUDED.full_name,
+    role = EXCLUDED.role,
+    is_validated = EXCLUDED.is_validated;
+
+  RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+  -- Fallback ultime : on insère juste l'ID pour ne pas bloquer la transaction Auth
+  -- On utilise un bloc anonyme pour ignorer les erreurs d'insertion ici aussi
+  BEGIN
+    INSERT INTO public.profiles (id) VALUES (NEW.id) ON CONFLICT (id) DO NOTHING;
+  EXCEPTION WHEN OTHERS THEN
+    -- On ne peut vraiment rien faire de plus, on retourne NEW pour sauver le record Auth
+    NULL;
+  END;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
