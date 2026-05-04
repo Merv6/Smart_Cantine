@@ -261,9 +261,14 @@ export default function AdminDash({
 
     setIsProcessing(requestId);
     try {
+      // Supabase can return profiles as an object or an array of one element
+      const profileData = Array.isArray(request.profiles) ? request.profiles[0] : request.profiles;
+
       // 1. Chercher si l'école existe déjà
       let schoolId = null;
-      if (request.school_name && request.role_requested !== 'super_admin') {
+      const normalizedRole = (request.role_requested || '').toUpperCase();
+      
+      if (request.school_name && !normalizedRole.includes('ADMIN')) {
         const { data: school } = await supabase
           .from('schools')
           .select('id')
@@ -273,20 +278,23 @@ export default function AdminDash({
         if (school) {
           schoolId = school.id;
         } else {
-          // Créer l'école si elle n'existe pas? 
-          // Pour la démo, on la crée automatiquement pour que le directeur ait un bureau fonctionnel
+          // Créer l'école si elle n'existe pas
           const { data: newSchool, error: schoolErr } = await supabase
             .from('schools')
             .insert({
                name: request.school_name,
-               department: request.profiles?.department,
-               commune: request.profiles?.commune,
-               arrondissement: request.profiles?.arrondissement
+               department: profileData?.department,
+               commune: profileData?.commune,
+               arrondissement: profileData?.arrondissement
             })
             .select('id')
             .single();
           
-          if (!schoolErr && newSchool) {
+          if (schoolErr) {
+            console.warn('Erreur creation ecole (non-bloquant):', schoolErr);
+          }
+          
+          if (newSchool) {
             schoolId = newSchool.id;
           }
         }
@@ -298,35 +306,38 @@ export default function AdminDash({
         .update({ status: 'approved' })
         .eq('id', requestId);
 
-      if (reqError) throw reqError;
+      if (reqError) throw new Error(`Erreur validation_requests: ${reqError.message}`);
 
       // 3. Update profile
-      const rawRole = request.role_requested || 'DIRECTOR';
       let dbRole = 'DIRECTOR';
       
-      if (rawRole.includes('ADMIN')) dbRole = 'SUPER_ADMIN';
-      else if (rawRole.includes('COOK')) dbRole = 'COOK';
+      if (normalizedRole.includes('ADMIN')) dbRole = 'SUPER_ADMIN';
+      else if (normalizedRole.includes('COOK')) dbRole = 'COOK';
+      else if (normalizedRole.includes('DIRECTOR') || normalizedRole.includes('DIRECTEUR')) dbRole = 'DIRECTOR';
       else dbRole = 'DIRECTOR';
+
+      console.log(`Validation de ${request.full_name}: Role=${dbRole}, SchoolId=${schoolId}`);
 
       const { error: profError } = await supabase
         .from('profiles')
         .update({ 
           is_validated: true,
           role: dbRole,
-          school_id: schoolId
+          school_id: schoolId,
+          school: request.school_name
         })
         .eq('id', request.user_id);
 
-      if (profError) throw profError;
+      if (profError) throw new Error(`Erreur profiles: ${profError.message}`);
 
       setPendingUsers(prev => prev.filter(r => r.id !== requestId));
-      alert('Utilisateur validé avec succès !');
+      alert(`L'utilisateur ${request.full_name} a été validé en tant que ${dbRole} ! Son dashboard sera mis à jour instantanément.`);
       
       // Refresh stats
       fetchDashboardData();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erreur validation:', err);
-      alert('Erreur lors de la validation.');
+      alert('Erreur lors de la validation: ' + (err.message || 'Erreur inconnue'));
     } finally {
       setIsProcessing(null);
     }
@@ -659,9 +670,9 @@ export default function AdminDash({
                         </td>
                         <td className="px-8 py-5">
                            <div className="text-sm font-bold text-slate-600 italic">
-                             {request.profiles?.department || 'N/A'}, {request.profiles?.commune || 'N/A'}
+                             {(Array.isArray(request.profiles) ? request.profiles[0] : request.profiles)?.department || 'N/A'}, {(Array.isArray(request.profiles) ? request.profiles[0] : request.profiles)?.commune || 'N/A'}
                            </div>
-                           <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">{request.profiles?.arrondissement || 'N/A'}</div>
+                           <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">{(Array.isArray(request.profiles) ? request.profiles[0] : request.profiles)?.arrondissement || 'N/A'}</div>
                         </td>
                         <td className="px-8 py-5">
                            <div className="text-xs font-bold text-slate-500">

@@ -2,16 +2,59 @@ import React from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { MessageSquare, Send, X, Bot, ChefHat, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import ReactMarkdown from 'react-markdown';
 import { Button } from '../ui';
+
+interface Message {
+  role: 'user' | 'bot';
+  text: string;
+}
 
 export default function Chatbot() {
   const [isOpen, setIsOpen] = React.useState(false);
-  const [messages, setMessages] = React.useState<{role: 'user' | 'bot', text: string}[]>([
+  const [messages, setMessages] = React.useState<Message[]>([
     { role: 'bot', text: "Bonjour ! Je suis l'assistant SmartCantine. Comment puis-je vous aider aujourd'hui ? Je peux vous conseiller sur la nutrition, la cuisine ou la gestion des repas." }
   ]);
   const [input, setInput] = React.useState('');
   const [isTyping, setIsTyping] = React.useState(false);
   const scrollRef = React.useRef<HTMLDivElement>(null);
+
+  // Use a ref to store the chat session so it persists across renders
+  const chatSessionRef = React.useRef<any>(null);
+
+  const initChat = React.useCallback(() => {
+    if (chatSessionRef.current) return chatSessionRef.current;
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      console.error("Clé API Gemini manquante");
+      return null;
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
+    const chat = ai.chats.create({
+      model: "gemini-3-flash-preview",
+      config: {
+        systemInstruction: `Tu es un assistant expert pour "SmartCantine", une application de gestion de cantines scolaires au Bénin. 
+        Ton rôle est d'accompagner les cuisiniers, les directeurs d'école et les gestionnaires.
+        
+        TES COMPÉTENCES :
+        1. NUTRITION : Conseiller sur l'équilibre alimentaire des enfants.
+        2. GASTRONOMIE BÉNINOISE : Proposer des recettes saines et locales.
+        3. GESTION : Aider à estimer les quantités et l'hygiène.
+        
+        TON TON :
+        - Sois amical, professionnel et très bref.
+        - Tes réponses doivent être fluides, naturelles et courtes.
+        - Va droit au but selon la demande.
+        
+        CONTEXTE : Le projet lutte contre l'abandon scolaire au Bénin.`,
+      }
+    });
+
+    chatSessionRef.current = chat;
+    return chat;
+  }, []);
 
   React.useEffect(() => {
     if (scrollRef.current) {
@@ -20,7 +63,7 @@ export default function Chatbot() {
   }, [messages]);
 
   const handleSend = async () => {
-    if (!input.trim()) return;
+    if (!input.trim() || isTyping) return;
 
     const userText = input;
     setMessages(prev => [...prev, { role: 'user', text: userText }]);
@@ -28,23 +71,24 @@ export default function Chatbot() {
     setIsTyping(true);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [
-            { 
-              parts: [
-                { text: `Tu es un assistant expert pour SmartCantine, une application de gestion de cantines scolaires au Bénin. Ton rôle est d'aider les cuisiniers et directeurs d'école. Conseils de cuisine, nutrition infantile, gestion des stocks alimentaires, recettes saines avec des produits locaux beninois (riz, maïs, haricot, niébé, igname, manioc, huile de palme). Sois amical, professionnel et encourageant. Voici la question de l'utilisateur : ${userText}` }
-              ] 
-            }
-        ],
+      const chat = initChat();
+      if (!chat) {
+        throw new Error("Impossible d'initialiser l'IA. Vérifiez la configuration.");
+      }
+
+      const response = await chat.sendMessage({
+        message: userText
       });
 
       const botText = response.text || "Désolé, je rencontre une petite difficulté. Essayez de reformuler votre question.";
       setMessages(prev => [...prev, { role: 'bot', text: botText }]);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      setMessages(prev => [...prev, { role: 'bot', text: "Erreur de connexion avec l'IA. Vérifiez votre clé API." }]);
+      const errorMsg = error.message?.includes("API_KEY_INVALID") 
+        ? "Votre clé API Gemini semble invalide. Veuillez vérifier votre configuration."
+        : "Erreur de communication avec l'assistant. Réessayez dans un instant.";
+      
+      setMessages(prev => [...prev, { role: 'bot', text: errorMsg }]);
     } finally {
       setIsTyping(false);
     }
@@ -94,8 +138,8 @@ export default function Chatbot() {
                     msg.role === 'user' 
                       ? 'bg-brand-green text-white rounded-tr-none shadow-md' 
                       : 'bg-white text-slate-700 rounded-tl-none border border-slate-100 shadow-sm'
-                  }`}>
-                    {msg.text}
+                   } prose prose-sm prose-slate`}>
+                    <ReactMarkdown>{msg.text}</ReactMarkdown>
                   </div>
                 </div>
               ))}

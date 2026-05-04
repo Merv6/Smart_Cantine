@@ -129,6 +129,9 @@ CREATE POLICY "Profiles are viewable by owner" ON profiles FOR SELECT USING (aut
 DROP POLICY IF EXISTS "Admins view all profiles" ON profiles;
 CREATE POLICY "Admins view all profiles" ON profiles FOR SELECT USING (get_my_role() = 'SUPER_ADMIN');
 
+DROP POLICY IF EXISTS "Admins update profiles" ON profiles;
+CREATE POLICY "Admins update profiles" ON profiles FOR UPDATE USING (get_my_role() = 'SUPER_ADMIN');
+
 DROP POLICY IF EXISTS "Users update own profile" ON profiles;
 CREATE POLICY "Users update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
 
@@ -137,6 +140,9 @@ DROP POLICY IF EXISTS "Schools access" ON schools;
 CREATE POLICY "Schools access" ON schools FOR SELECT USING (
   EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND (school_id = schools.id OR role = 'SUPER_ADMIN'))
 );
+
+DROP POLICY IF EXISTS "Admins manage schools" ON schools;
+CREATE POLICY "Admins manage schools" ON schools FOR ALL USING (get_my_role() = 'SUPER_ADMIN');
 
 -- Inventory
 DROP POLICY IF EXISTS "Inventory access" ON inventory;
