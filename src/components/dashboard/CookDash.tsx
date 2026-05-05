@@ -16,6 +16,7 @@ import {
   X
 } from 'lucide-react';
 import { Button, Input } from '../ui';
+import { toast } from 'sonner';
 
 import { supabase } from '../../lib/supabase';
 
@@ -121,7 +122,7 @@ export default function CookDash({
 
   const handleSubmitReport = async () => {
     if (!schoolId) {
-      alert('Erreur: Vous n\'êtes rattaché à aucun établissement. Veuillez contacter votre directeur.');
+      toast.error('Erreur: Vous n\'êtes rattaché à aucun établissement. Veuillez contacter votre directeur.');
       return;
     }
     setIsLoading(true);
@@ -172,7 +173,7 @@ export default function CookDash({
       }, 5000);
     } catch (err) {
       console.error('Erreur rapport repas:', err);
-      alert('Erreur lors de l\'envoi du rapport.');
+      toast.error('Erreur lors de l\'envoi du rapport.');
       setIsLoading(false);
     }
   };
@@ -282,7 +283,7 @@ export default function CookDash({
                         disabled={!isValidated || !isStep1Valid}
                         onClick={() => {
                           if (!schoolId) {
-                            alert("Votre compte est validé, mais votre établissement n'est pas encore configuré. Veuillez contacter votre directeur.");
+                            toast.error("Votre compte est validé, mais votre établissement n'est pas encore configuré. Veuillez contacter votre directeur.");
                             return;
                           }
                           setStep(2);

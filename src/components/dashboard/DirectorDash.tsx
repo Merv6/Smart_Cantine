@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { Button, Input } from '../ui';
 import { motion, AnimatePresence } from 'motion/react';
+import { toast } from 'sonner';
 
 import { supabase } from '../../lib/supabase';
 
@@ -197,7 +198,7 @@ export default function DirectorDash({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!schoolInfo) {
-      alert('Erreur: Votre profil n\'est pas encore rattaché à un établissement. Veuillez contacter l\'administrateur.');
+      toast.error('Erreur: Votre profil n\'est pas encore rattaché à un établissement. Veuillez contacter l\'administrateur.');
       return;
     }
     setIsSubmitting(true);
@@ -244,7 +245,7 @@ export default function DirectorDash({
       fetchData();
     } catch (err) {
       console.error('Erreur réception vivres:', err);
-      alert('Erreur lors de l\'enregistrement.');
+      toast.error('Erreur lors de l\'enregistrement.');
       setIsSubmitting(false);
     }
   };
@@ -277,12 +278,12 @@ export default function DirectorDash({
 
       if (error) throw error;
       
-      alert('Repas validé avec succès !');
+      toast.success('Repas validé avec succès !');
       fetchData();
       setView('overview');
     } catch (err) {
       console.error('Erreur validation repas:', err);
-      alert('Erreur lors de la validation.');
+      toast.error('Erreur lors de la validation.');
     } finally {
       setIsSubmitting(false);
     }
@@ -510,6 +511,9 @@ export default function DirectorDash({
                 <Input 
                   label="Numéro de téléphone" 
                   placeholder="+229 00 00 00 00" 
+                  type="tel"
+                  name="phone_number"
+                  inputMode="tel"
                   required
                   value={cookData.phone}
                   onChange={e => setCookData({...cookData, phone: e.target.value})}
@@ -548,7 +552,7 @@ export default function DirectorDash({
               disabled={!isValidated}
               onClick={() => {
                 if (!schoolInfo) {
-                  alert("Votre compte est validé, mais votre établissement n'est pas encore configuré. Veuillez contacter l'administrateur.");
+                  toast.error("Votre compte est validé, mais votre établissement n'est pas encore configuré. Veuillez contacter l'administrateur.");
                   return;
                 }
                 setView('register');
@@ -562,7 +566,7 @@ export default function DirectorDash({
               disabled={!isValidated}
               onClick={() => {
                 if (!schoolInfo) {
-                  alert("Votre compte est validé, mais votre établissement n'est pas encore configuré. Veuillez contacter l'administrateur.");
+                  toast.error("Votre compte est validé, mais votre établissement n'est pas encore configuré. Veuillez contacter l'administrateur.");
                   return;
                 }
                 setView('register_cook');

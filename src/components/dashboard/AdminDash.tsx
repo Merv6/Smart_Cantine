@@ -34,6 +34,7 @@ import {
 } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from '../ui';
+import { toast } from 'sonner';
 import { supabase } from '../../lib/supabase';
 
 const data = [
@@ -69,6 +70,8 @@ const deptStats = [
   { name: 'Ouémé', schools: 29, pupils: 4000, meals: '55k' },
 ];
 
+import { BENIN_GEO_DATA } from '../../lib/geoData';
+
 export default function AdminDash({ 
   isValidated,
   user: initialUser,
@@ -103,6 +106,9 @@ export default function AdminDash({
     arrondissement: '',
     director: ''
   });
+
+  const selectedDept = BENIN_GEO_DATA.find(d => d.name === newSchool.department);
+  const selectedCommune = selectedDept?.communes.find(c => c.name === newSchool.commune);
   
   const [deptStats, setDeptStats] = React.useState<any[]>([]);
   const [schoolsList, setSchoolsList] = React.useState<any[]>([]);
@@ -282,11 +288,12 @@ export default function AdminDash({
       // Supabase can return profiles as an object or an array of one element
       const profileData = Array.isArray(request.profiles) ? request.profiles[0] : request.profiles;
 
-      // 1. Chercher si l'école existe déjà
-      let schoolId = null;
+      // 1. Déterminer l'ID de l'école
+      let schoolId = profileData?.school_id || null;
       const normalizedRole = (request.role_requested || '').toUpperCase();
       
-      if (request.school_name && !normalizedRole.includes('ADMIN')) {
+      // Si on n'a pas d'ID d'école mais qu'on a un nom, on cherche par nom (compatibilité)
+      if (!schoolId && request.school_name && !normalizedRole.includes('ADMIN')) {
         const { data: school } = await supabase
           .from('schools')
           .select('id')
@@ -296,7 +303,7 @@ export default function AdminDash({
         if (school) {
           schoolId = school.id;
         } else {
-          // Créer l'école si elle n'existe pas
+          // Créer l'école si elle n'existe vraiment pas (cas dégradé)
           const { data: newSchool, error: schoolErr } = await supabase
             .from('schools')
             .insert({
@@ -308,11 +315,7 @@ export default function AdminDash({
             .select('id')
             .single();
           
-          if (schoolErr) {
-            console.warn('Erreur creation ecole (non-bloquant):', schoolErr);
-          }
-          
-          if (newSchool) {
+          if (!schoolErr && newSchool) {
             schoolId = newSchool.id;
           }
         }
@@ -363,13 +366,13 @@ export default function AdminDash({
       }
 
       setPendingUsers(prev => prev.filter(r => r.id !== requestId));
-      alert(`L'utilisateur ${request.full_name} a été validé en tant que ${dbRole} ! Son dashboard sera mis à jour instantanément.`);
+      toast.success(`L'utilisateur ${request.full_name} a été validé en tant que ${dbRole} ! Son dashboard sera mis à jour instantanément.`);
       
       // Refresh stats
       fetchDashboardData();
     } catch (err: any) {
       console.error('Erreur validation:', err);
-      alert('Erreur lors de la validation: ' + (err.message || 'Erreur inconnue'));
+      toast.error('Erreur lors de la validation: ' + (err.message || 'Erreur inconnue'));
     } finally {
       setIsProcessing(null);
     }
@@ -408,7 +411,7 @@ export default function AdminDash({
       fetchDashboardData();
     } catch (err) {
       console.error('Erreur suppression:', err);
-      alert('Erreur lors de la suppression.');
+      toast.error('Erreur lors de la suppression.');
     } finally {
       setIsProcessing(null);
     }
@@ -427,18 +430,20 @@ export default function AdminDash({
         .insert({
           name: newSchool.name,
           department: newSchool.department,
-          commune: newSchool.commune
+          commune: newSchool.commune,
+          arrondissement: newSchool.arrondissement,
+          director_name: newSchool.director
         });
 
       if (error) throw error;
       
       setShowNewSchoolModal(false);
       setNewSchool({ name: '', department: '', commune: '', arrondissement: '', director: '' });
-      alert('École créée avec succès !');
+      toast.success('École créée avec succès !');
       fetchDashboardData();
     } catch (err) {
       console.error('Erreur création école:', err);
-      alert('Erreur lors de la création de l\'école.');
+      toast.error('Erreur lors de la création de l\'école: ' + (err.message || 'Erreur inconnue'));
     } finally {
       setIsProcessing(null);
     }
@@ -492,24 +497,49 @@ export default function AdminDash({
                   <div className="grid grid-cols-2 gap-4">
                     <div className="flex flex-col gap-1.5">
                       <label className="text-xs font-black text-slate-500 uppercase ml-1">Département</label>
-                      <input 
+                      <select 
                         required
-                        placeholder="Ex: Littoral"
                         className="flex h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm focus:ring-2 focus:ring-brand-green/30 outline-none"
                         value={newSchool.department}
-                        onChange={e => setNewSchool({...newSchool, department: e.target.value})}
-                      />
+                        onChange={e => setNewSchool({...newSchool, department: e.target.value, commune: '', arrondissement: ''})}
+                      >
+                        <option value="">Sélectionner</option>
+                        {BENIN_GEO_DATA.map(d => (
+                          <option key={d.name} value={d.name}>{d.name}</option>
+                        ))}
+                      </select>
                     </div>
                     <div className="flex flex-col gap-1.5">
                       <label className="text-xs font-black text-slate-500 uppercase ml-1">Commune</label>
-                      <input 
+                      <select 
                         required
-                        placeholder="Ex: Cotonou"
-                        className="flex h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm focus:ring-2 focus:ring-brand-green/30 outline-none"
+                        disabled={!newSchool.department}
+                        className="flex h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm focus:ring-2 focus:ring-brand-green/30 outline-none disabled:opacity-50"
                         value={newSchool.commune}
-                        onChange={e => setNewSchool({...newSchool, commune: e.target.value})}
-                      />
+                        onChange={e => setNewSchool({...newSchool, commune: e.target.value, arrondissement: ''})}
+                      >
+                        <option value="">Sélectionner</option>
+                        {selectedDept?.communes.map(c => (
+                          <option key={c.name} value={c.name}>{c.name}</option>
+                        ))}
+                      </select>
                     </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-black text-slate-500 uppercase ml-1">Arrondissement</label>
+                    <select 
+                      required
+                      disabled={!newSchool.commune}
+                      className="flex h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm focus:ring-2 focus:ring-brand-green/30 outline-none disabled:opacity-50"
+                      value={newSchool.arrondissement}
+                      onChange={e => setNewSchool({...newSchool, arrondissement: e.target.value})}
+                    >
+                      <option value="">Sélectionner un arrondissement</option>
+                      {selectedCommune?.arrondissements.map(a => (
+                        <option key={a} value={a}>{a}</option>
+                      ))}
+                    </select>
                   </div>
 
                   <div className="flex flex-col gap-1.5">

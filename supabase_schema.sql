@@ -31,11 +31,32 @@ BEGIN
     ALTER TABLE public.profiles ADD COLUMN school_id UUID REFERENCES public.schools(id);
   END IF;
   
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='profiles' AND column_name='email') THEN
+    ALTER TABLE public.profiles ADD COLUMN email TEXT;
+  END IF;
+  
   -- Assouplir la contrainte de rôle
   IF EXISTS (SELECT 1 FROM information_schema.constraint_column_usage WHERE table_name = 'profiles' AND constraint_name = 'profiles_role_check') THEN
     ALTER TABLE public.profiles DROP CONSTRAINT profiles_role_check;
   END IF;
   ALTER TABLE public.profiles ADD CONSTRAINT profiles_role_check CHECK (role IS NULL OR role IN ('SUPER_ADMIN', 'DIRECTOR', 'COOK'));
+END $$;
+
+-- Migration pour la table schools
+DO $$ 
+BEGIN 
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='schools' AND column_name='department') THEN
+    ALTER TABLE public.schools ADD COLUMN department TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='schools' AND column_name='commune') THEN
+    ALTER TABLE public.schools ADD COLUMN commune TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='schools' AND column_name='arrondissement') THEN
+    ALTER TABLE public.schools ADD COLUMN arrondissement TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='schools' AND column_name='director_name') THEN
+    ALTER TABLE public.schools ADD COLUMN director_name TEXT;
+  END IF;
 END $$;
 
 CREATE TABLE IF NOT EXISTS public.validation_requests (
@@ -100,6 +121,19 @@ CREATE TABLE IF NOT EXISTS public.meal_reports (
 );
 
 -- 2. FONCTIONS DE SÉCURITÉ
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN (
+    EXISTS (
+      SELECT 1 FROM public.profiles 
+      WHERE id = auth.uid() AND role = 'SUPER_ADMIN'
+    )
+    OR (auth.jwt() ->> 'email' IN ('honvoumerveille@gmail.com', 'arianaudelegbede1@gmail.com'))
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 CREATE OR REPLACE FUNCTION public.get_my_role()
 RETURNS TEXT AS $$
   SELECT role FROM public.profiles WHERE id = auth.uid();
@@ -170,22 +204,28 @@ DROP POLICY IF EXISTS "Profiles are viewable by owner" ON profiles;
 CREATE POLICY "Profiles are viewable by owner" ON profiles FOR SELECT USING (auth.uid() = id);
 
 DROP POLICY IF EXISTS "Admins view all profiles" ON profiles;
-CREATE POLICY "Admins view all profiles" ON profiles FOR SELECT USING (get_my_role() = 'SUPER_ADMIN');
+CREATE POLICY "Admins view all profiles" ON profiles FOR SELECT USING (is_admin());
 
 DROP POLICY IF EXISTS "Admins update profiles" ON profiles;
-CREATE POLICY "Admins update profiles" ON profiles FOR UPDATE USING (get_my_role() = 'SUPER_ADMIN');
+CREATE POLICY "Admins update profiles" ON profiles FOR UPDATE USING (is_admin());
 
 DROP POLICY IF EXISTS "Users update own profile" ON profiles;
 CREATE POLICY "Users update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Users insert own profile" ON profiles;
+CREATE POLICY "Users insert own profile" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
+
 -- Schools
-DROP POLICY IF EXISTS "Schools access" ON schools;
-CREATE POLICY "Schools access" ON schools FOR SELECT USING (
-  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND (school_id = schools.id OR role = 'SUPER_ADMIN'))
-);
+DROP POLICY IF EXISTS "Schools are viewable by authenticated users" ON schools;
+CREATE POLICY "Schools are viewable by authenticated users" ON schools 
+  FOR SELECT TO authenticated 
+  USING (true);
 
 DROP POLICY IF EXISTS "Admins manage schools" ON schools;
-CREATE POLICY "Admins manage schools" ON schools FOR ALL USING (get_my_role() = 'SUPER_ADMIN');
+CREATE POLICY "Admins manage schools" ON schools 
+  FOR ALL TO authenticated 
+  USING (is_admin())
+  WITH CHECK (is_admin());
 
 -- Inventory
 DROP POLICY IF EXISTS "Inventory access" ON inventory;
@@ -203,7 +243,7 @@ CREATE POLICY "Meal reports access" ON meal_reports FOR ALL USING (
 ALTER TABLE validation_requests ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Admins view all validation requests" ON validation_requests;
-CREATE POLICY "Admins view all validation requests" ON validation_requests FOR ALL USING (get_my_role() = 'SUPER_ADMIN');
+CREATE POLICY "Admins view all validation requests" ON validation_requests FOR ALL USING (is_admin());
 
 DROP POLICY IF EXISTS "Users can create validation request" ON validation_requests;
 CREATE POLICY "Users can create validation request" ON validation_requests FOR INSERT WITH CHECK (auth.uid() = user_id);

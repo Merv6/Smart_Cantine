@@ -11,7 +11,7 @@ import {
   AlertCircle 
 } from 'lucide-react';
 import { Button, Input } from '../ui';
-import { BENIN_LOCATIONS } from '../../constants/benin';
+import { BENIN_GEO_DATA } from '../../lib/geoData';
 import { supabase } from '../../lib/supabase';
 
 interface AccountValidationFormProps {
@@ -23,6 +23,8 @@ export default function AccountValidationForm({ onComplete }: AccountValidationF
   const [isLoading, setIsLoading] = React.useState(false);
   const [isSubmitted, setIsSubmitted] = React.useState(false);
   const [error, setError] = React.useState('');
+  const [schools, setSchools] = React.useState<any[]>([]);
+  const [isLoadingSchools, setIsLoadingSchools] = React.useState(true);
   const [formData, setFormData] = React.useState({
     role: '' as string,
     name: '',
@@ -31,9 +33,29 @@ export default function AccountValidationForm({ onComplete }: AccountValidationF
     commune: '',
     arrondissement: '',
     school: '',
+    schoolId: '',
     cipNumber: '',
     document: null as File | null
   });
+
+  React.useEffect(() => {
+    async function fetchSchools() {
+      setIsLoadingSchools(true);
+      try {
+        const { data, error } = await supabase
+          .from('schools')
+          .select('*')
+          .order('name');
+        if (error) throw error;
+        setSchools(data || []);
+      } catch (err) {
+        console.error('Erreur schools:', err);
+      } finally {
+        setIsLoadingSchools(false);
+      }
+    }
+    fetchSchools();
+  }, []);
 
   const validateStep = (currentStep: number) => {
     setError('');
@@ -53,7 +75,7 @@ export default function AccountValidationForm({ onComplete }: AccountValidationF
       }
     } else if (currentStep === 2) {
       const basicFields = formData.department && formData.commune && formData.arrondissement;
-      const schoolField = formData.role === 'SUPER_ADMIN' ? true : !!formData.school;
+      const schoolField = formData.role === 'SUPER_ADMIN' ? true : !!formData.schoolId;
       if (!basicFields || !schoolField) {
         setError('Veuillez renseigner toutes les informations de localisation/école.');
         return false;
@@ -96,7 +118,7 @@ export default function AccountValidationForm({ onComplete }: AccountValidationF
 
       let documentUrl = '';
       
-      // 2. Upload du document si présent (Non-bloquant pour la démo)
+      // 2. Upload doc
       if (formData.document) {
         try {
           const fileExt = formData.document.name.split('.').pop();
@@ -110,10 +132,7 @@ export default function AccountValidationForm({ onComplete }: AccountValidationF
               upsert: false
             });
 
-          if (uploadError) {
-            console.warn('⚠️ Stockage non configuré (Bucket "proofs" manquant). Le document ne sera pas sauvegardé sur le cloud.');
-            // On continue sans l'URL pour ne pas bloquer l'utilisateur
-          } else if (uploadData) {
+          if (!uploadError && uploadData) {
             const { data: { publicUrl } } = supabase.storage
               .from('proofs')
               .getPublicUrl(filePath);
@@ -124,70 +143,52 @@ export default function AccountValidationForm({ onComplete }: AccountValidationF
         }
       }
 
-      // 3. Mise à jour ou création du profil de base
+      // 3. Update profile
+      const selectedSchool = schools.find(s => s.id === formData.schoolId);
       const { error: profileError } = await supabase
         .from('profiles')
         .upsert({
           id: activeUser.id,
+          email: activeUser.email,
           full_name: formData.name,
           phone: formData.phone,
           department: formData.department,
           commune: formData.commune,
           arrondissement: formData.arrondissement,
-          school: formData.role !== 'SUPER_ADMIN' ? formData.school : null,
+          school_id: formData.role !== 'SUPER_ADMIN' ? formData.schoolId : null,
+          school: formData.role !== 'SUPER_ADMIN' ? selectedSchool?.name : null,
           cip_number: formData.role === 'SUPER_ADMIN' ? formData.cipNumber : null,
-          email: activeUser.email,
-          is_validated: false, // On force à false pendant la demande
+          is_validated: false,
         }, { onConflict: 'id' });
 
       if (profileError) throw profileError;
 
-      // 4. Création de la demande de validation
+      // 4. Validation request
       const { error: requestError } = await supabase
         .from('validation_requests')
         .insert({
           user_id: activeUser.id,
           full_name: formData.name,
           role_requested: formData.role,
-          school_name: formData.role !== 'SUPER_ADMIN' ? formData.school : 'Administration',
+          school_name: formData.role !== 'SUPER_ADMIN' ? selectedSchool?.name : 'Administration',
           document_url: documentUrl,
           status: 'pending'
         });
 
       if (requestError) throw requestError;
 
-      // 5. Gestion de l'école (Optionnel)
-      if (formData.role !== 'SUPER_ADMIN' && formData.school) {
-        await supabase
-          .from('schools')
-          .upsert({
-            name: formData.school,
-            department: formData.department,
-            commune: formData.commune
-          }, { onConflict: 'name' });
-      }
-
-      // 6. Confirmation finale
-      if (formData.document && !documentUrl) {
-        console.warn("Dossier soumis sans fichier (Bucket proofs non configuré)");
-      }
-
       setIsSubmitted(true);
     } catch (err: any) {
       console.error('Erreur validation profil:', err);
-      if (err.message?.includes('Failed to fetch')) {
-        setError("Impossible de contacter le serveur. Vérifiez votre connexion.");
-      } else if (err.message?.includes('Bucket not found')) {
-        setError("Erreur de stockage : Le compartiment 'proofs' n'est pas créé sur Supabase.");
-      } else {
-        setError(err.message || "Une erreur est survenue lors de l'envoi de votre demande.");
-      }
+      setError(err.message || "Une erreur est survenue lors de l'envoi de votre demande.");
     } finally {
       setIsLoading(false);
     }
   };
 
-  const selectedDept = BENIN_LOCATIONS.find(d => d.department === formData.department);
+  const selectedDept = BENIN_GEO_DATA.find(d => d.name === formData.department);
+  const selectedCommune = selectedDept?.communes.find(c => c.name === formData.commune);
+  const filteredSchools = schools.filter(s => s.arrondissement === formData.arrondissement);
 
   const roles = [
     { 
@@ -325,6 +326,7 @@ export default function AccountValidationForm({ onComplete }: AccountValidationF
               label="Numéro de téléphone mobile" 
               placeholder="01 00 00 00 00" 
               type="tel" 
+              name="phone_number"
               required 
               autoComplete="tel"
               inputMode="tel"
@@ -371,11 +373,11 @@ export default function AccountValidationForm({ onComplete }: AccountValidationF
                 <select 
                   className="flex h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition-all focus:ring-4 focus:ring-brand-green/10 outline-none"
                   value={formData.department}
-                  onChange={e => setFormData({...formData, department: e.target.value, commune: ''})}
+                  onChange={e => setFormData({...formData, department: e.target.value, commune: '', arrondissement: '', schoolId: ''})}
                 >
                   <option value="">Sélectionner</option>
-                  {BENIN_LOCATIONS.map(loc => (
-                    <option key={loc.department} value={loc.department}>{loc.department}</option>
+                  {BENIN_GEO_DATA.map(d => (
+                    <option key={d.name} value={d.name}>{d.name}</option>
                   ))}
                 </select>
               </div>
@@ -385,34 +387,52 @@ export default function AccountValidationForm({ onComplete }: AccountValidationF
                   className="flex h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition-all focus:ring-4 focus:ring-brand-green/10 outline-none disabled:bg-slate-50 disabled:text-slate-400"
                   disabled={!formData.department}
                   value={formData.commune}
-                  onChange={e => setFormData({...formData, commune: e.target.value})}
+                  onChange={e => setFormData({...formData, commune: e.target.value, arrondissement: '', schoolId: ''})}
                 >
-                  <option value="">Sélectionner la commune</option>
-                  {selectedDept?.communes.map(com => (
-                    <option key={com} value={com}>{com}</option>
+                  <option value="">Sélectionner</option>
+                  {selectedDept?.communes.map(c => (
+                    <option key={c.name} value={c.name}>{c.name}</option>
                   ))}
                 </select>
               </div>
             </div>
-            <Input 
-              label="Arrondissement" 
-              placeholder="Ex: Godomey, Akassato..." 
-              required 
-              type="text"
-              value={formData.arrondissement} 
-              onChange={e => setFormData({...formData, arrondissement: e.target.value})} 
-            />
-            
-            {formData.role !== 'SUPER_ADMIN' && (
-              <Input 
-                label="Nom de l'établissement scolaire" 
-                placeholder="Ex: EPP Godomey Centre (Groupe A)" 
-                required 
-                type="text"
-                value={formData.school} 
-                onChange={e => setFormData({...formData, school: e.target.value})} 
-              />
-            )}
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5 text-left">
+                <label className="text-xs font-black uppercase text-slate-400 tracking-widest ml-1">Arrondissement</label>
+                <select 
+                  className="flex h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition-all focus:ring-4 focus:ring-brand-green/10 outline-none disabled:bg-slate-50 disabled:text-slate-400"
+                  disabled={!formData.commune}
+                  value={formData.arrondissement}
+                  onChange={e => setFormData({...formData, arrondissement: e.target.value, schoolId: ''})}
+                >
+                  <option value="">Sélectionner</option>
+                  {selectedCommune?.arrondissements.map(a => (
+                    <option key={a} value={a}>{a}</option>
+                  ))}
+                </select>
+              </div>
+
+              {formData.role !== 'SUPER_ADMIN' && (
+                <div className="flex flex-col gap-1.5 text-left">
+                  <label className="text-xs font-black uppercase text-slate-400 tracking-widest ml-1">Établissement</label>
+                  <select 
+                    className="flex h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition-all focus:ring-4 focus:ring-brand-green/10 outline-none disabled:bg-slate-50 disabled:text-slate-400"
+                    disabled={!formData.arrondissement || isLoadingSchools}
+                    value={formData.schoolId}
+                    onChange={e => setFormData({...formData, schoolId: e.target.value})}
+                  >
+                    <option value="">{isLoadingSchools ? "Chargement..." : "Sélectionner votre école"}</option>
+                    {filteredSchools.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                  {formData.arrondissement && filteredSchools.length === 0 && !isLoadingSchools && (
+                    <p className="text-[10px] text-brand-orange font-bold mt-1">⚠️ Aucune école enregistrée par l'Admin dans cet arrondissement.</p>
+                  )}
+                </div>
+              )}
+            </div>
             
             <div className="flex gap-3 pt-4">
               <Button type="button" variant="outline" onClick={handlePrev} className="flex-1 rounded-2xl h-14 font-bold border-slate-200 text-slate-500">Retour</Button>
