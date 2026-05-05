@@ -412,6 +412,12 @@ export default function AdminDash({
     }
   };
 
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour < 18) return 'Bonjour';
+    return 'Bonsoir';
+  };
+
   return (
     <div className="space-y-8 pb-12 text-left">
       {/* New School Modal */}
@@ -541,18 +547,14 @@ export default function AdminDash({
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-display font-bold text-slate-800">
-            {activeTab === 'overview' && "Tableau de Bord Super Admin"}
+            {getGreeting()}, {initialProfile?.full_name || 'cher utilisateur'}
+          </h1>
+          <p className="text-slate-500 font-medium">
+            {activeTab === 'overview' && "Vue d'ensemble • Super Admin"}
             {activeTab === 'validations' && "Validation des Demandes"}
             {activeTab === 'schools' && "Gestion des Établissements"}
             {activeTab === 'inventory' && "État des Stocks Nationaux"}
             {activeTab === 'settings' && "Configuration Système"}
-          </h1>
-          <p className="text-slate-500">
-            {activeTab === 'overview' && "Aperçu global de la nutrition scolaire au Bénin"}
-            {activeTab === 'validations' && "Examinez et approuvez les nouveaux comptes et arrivages"}
-            {activeTab === 'schools' && "Suivi et paramétrage des écoles partenaires"}
-            {activeTab === 'inventory' && "Consultez les niveaux de vivres sur l'ensemble du territoire"}
-            {activeTab === 'settings' && "Gérez les paramètres globaux de la plateforme"}
           </p>
         </div>
         <div className="flex gap-3">

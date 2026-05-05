@@ -195,14 +195,54 @@ export default function Sidebar({
     </div>
   );
 
+  const allItems = React.useMemo(() => {
+    return menuGroups.flatMap(group => group.items);
+  }, [menuGroups]);
+
   return (
     <>
-      <div className={`flex-shrink-0 transition-all duration-500 ${isCollapsed ? 'w-16' : 'w-16'}`}>
+      {/* Mobile Bottom Bar */}
+      <nav className="fixed bottom-0 left-0 right-0 h-16 bg-white border-t border-slate-100 z-[150] flex items-center justify-around px-2 md:hidden">
+        {allItems.map((item) => {
+          const isActive = activeTab === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => {
+                setActiveTab(item.id);
+                setIsMobileOpen(false);
+              }}
+              className={`flex flex-col items-center justify-center flex-1 gap-1 h-full max-w-[80px] transition-all transform active:scale-90 ${
+                isActive ? 'text-brand-green' : 'text-slate-400'
+              }`}
+            >
+              <div className={`transition-transform duration-300 ${isActive ? 'scale-110' : ''}`}>
+                {React.cloneElement(item.icon as React.ReactElement, { size: 20 })}
+              </div>
+              <span className={`text-[10px] font-bold truncate w-full text-center ${isActive ? 'opacity-100' : 'opacity-80'}`}>
+                {item.label}
+              </span>
+              {isActive && (
+                <motion.div 
+                  layoutId="activeTabMobile"
+                  className="absolute bottom-0 w-8 h-1 bg-brand-green rounded-t-full"
+                />
+              )}
+            </button>
+          );
+        })}
+        {/* Logout on mobile can be the last item or we can expect it to be in settings/profile */}
+        {/* If user really needs logout visible, we check if there is space. For now keep simple. */}
+      </nav>
+
+      {/* Desktop Sidebar Spacer */}
+      <div className={`hidden md:block flex-shrink-0 transition-all duration-500 ${isCollapsed ? 'w-16' : 'w-16'}`}>
         {/* This div reserves the 64px space (w-16) so content doesn't move when opening */}
       </div>
 
+      {/* Desktop Sidebar */}
       <aside 
-        className={`fixed top-0 left-0 h-screen z-[150] transition-all duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] bg-white border-r border-slate-100 ${
+        className={`hidden md:block fixed top-0 left-0 h-screen z-[150] transition-all duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] bg-white border-r border-slate-100 ${
           isCollapsed ? 'w-16' : 'w-64'
         }`}
       >

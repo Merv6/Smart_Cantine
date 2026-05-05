@@ -10,7 +10,10 @@ import {
   CheckCircle, 
   Package, 
   Utensils, 
-  Clock
+  Clock,
+  Menu,
+  Settings,
+  X
 } from 'lucide-react';
 import { UserRole } from '../types';
 import AdminDash from '../components/dashboard/AdminDash';
@@ -62,6 +65,7 @@ export default function Dashboard() {
   const [showValidationModal, setShowValidationModal] = React.useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = React.useState(false);
   const navigate = useNavigate();
 
   React.useEffect(() => {
@@ -277,9 +281,84 @@ export default function Dashboard() {
   // Dashboard normal, accessible même si non validé (avec restrictions)
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col text-left">
+      {/* Mobile Top Header */}
+      <header className="fixed top-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-md border-b border-slate-100 z-[160] flex items-center justify-between px-4 md:hidden shadow-sm">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-brand-green rounded-lg flex items-center justify-center text-white shadow-sm shadow-brand-green/20">
+            <Utensils size={18} />
+          </div>
+          <span className="font-black text-slate-800 tracking-tight">SmartCantine</span>
+        </div>
+        
+        <div className="relative">
+          <button 
+            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+              isDropdownOpen ? 'bg-brand-green text-white shadow-lg shadow-brand-green/30' : 'bg-slate-50 text-slate-600'
+            }`}
+          >
+            {isDropdownOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+
+          <AnimatePresence>
+            {isDropdownOpen && (
+              <>
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setIsDropdownOpen(false)}
+                  className="fixed inset-0 bg-slate-900/20 backdrop-blur-[2px] z-[-1]"
+                />
+                <motion.div
+                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                  className="absolute right-0 mt-3 w-56 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden py-2"
+                >
+                  <div className="px-4 py-3 border-b border-slate-50">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Mon Compte</p>
+                    <p className="text-sm font-black text-slate-800 truncate">{profile?.full_name || user?.email}</p>
+                  </div>
+                  
+                  <button
+                    onClick={() => {
+                      setActiveTab('settings');
+                      setIsDropdownOpen(false);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-slate-50 transition-colors text-left"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-orange-50 text-orange-500 flex items-center justify-center">
+                      <Settings size={18} />
+                    </div>
+                    <span className="text-sm font-bold">Paramètres</span>
+                  </button>
+                  
+                  <button
+                    onClick={() => {
+                      setIsDropdownOpen(false);
+                      setShowLogoutConfirm(true);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-red-500 hover:bg-red-50 transition-colors text-left font-bold"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-red-50 text-red-500 flex items-center justify-center">
+                      <LogOut size={18} />
+                    </div>
+                    <span className="text-sm">Déconnexion</span>
+                  </button>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
+        </div>
+      </header>
+
+      {/* Spacing for mobile header */}
+      <div className="h-16 md:hidden flex-shrink-0" />
+
       {/* Validation Banner if unvalidated and not pending */}
       {isValidated === false && !isValidationPending && (
-        <div className="bg-brand-orange text-white py-3 px-6 flex flex-col md:flex-row justify-between items-center gap-3 sticky top-0 z-[100] shadow-md">
+        <div className="bg-brand-orange text-white py-3 px-6 flex flex-col md:flex-row justify-between items-center gap-3 sticky top-16 md:top-0 z-[100] shadow-md">
           <div className="flex items-center gap-3 text-center md:text-left">
             <AlertCircle size={20} className="shrink-0" />
             <div>
@@ -299,7 +378,7 @@ export default function Dashboard() {
 
       {/* Pending Validation Banner */}
       {isValidated === false && isValidationPending && (
-        <div className="bg-blue-500 text-white py-3 px-6 flex flex-col md:flex-row justify-between items-center gap-3 sticky top-0 z-[100] shadow-md">
+        <div className="bg-blue-500 text-white py-3 px-6 flex flex-col md:flex-row justify-between items-center gap-3 sticky top-16 md:top-0 z-[100] shadow-md">
           <div className="flex items-center gap-3 text-center md:text-left">
             <Clock size={20} className="shrink-0 animate-pulse" />
             <div>
@@ -312,18 +391,6 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-
-      <AnimatePresence>
-        {isMobileMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setIsMobileMenuOpen(false)}
-            className="fixed inset-0 bg-slate-900/40 z-[150] lg:hidden"
-          />
-        )}
-      </AnimatePresence>
 
       <div className="flex flex-row flex-1 relative bg-slate-50/30 overflow-hidden">
         <Sidebar 
@@ -338,7 +405,7 @@ export default function Dashboard() {
         />
 
         {/* Main Content Area */}
-        <main className="flex-1 p-4 md:p-8 lg:p-10 overflow-auto bg-white/40">
+        <main className="flex-1 p-4 pb-24 md:p-8 lg:p-10 overflow-auto bg-white/40">
           <AnimatePresence mode="wait">
             <motion.div
               key={(role || '') + activeTab}

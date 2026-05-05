@@ -73,7 +73,12 @@ export default function Chatbot() {
     try {
       const chat = initChat();
       if (!chat) {
-        throw new Error("Impossible d'initialiser l'IA. Vérifiez la configuration.");
+        setMessages(prev => [...prev, { 
+          role: 'bot', 
+          text: "⚠️ **Configuration incomplète** : La clé API Gemini est manquante. Si vous hébergez ce site, assurez-vous d'avoir configuré la variable d'environnement `GEMINI_API_KEY`." 
+        }]);
+        setIsTyping(false);
+        return;
       }
 
       const response = await chat.sendMessage({
@@ -98,7 +103,7 @@ export default function Chatbot() {
     <>
       <button 
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-8 right-8 bg-brand-orange text-white p-4 rounded-full shadow-2xl hover:scale-110 active:scale-95 transition-all z-40 group"
+        className="fixed bottom-24 md:bottom-8 right-4 md:right-8 bg-brand-orange text-white p-4 rounded-full shadow-2xl hover:scale-110 active:scale-95 transition-all z-40 group"
       >
         <MessageSquare size={28} />
         <span className="absolute right-full mr-4 top-1/2 -translate-y-1/2 bg-slate-900 text-white text-xs px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
@@ -112,7 +117,7 @@ export default function Chatbot() {
             initial={{ opacity: 0, y: 100, scale: 0.8 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 100, scale: 0.8 }}
-            className="fixed bottom-8 right-8 w-[400px] max-w-[calc(100vw-4rem)] h-[600px] max-h-[calc(100vh-6rem)] bg-white rounded-3xl shadow-2xl z-50 flex flex-col border border-slate-100 overflow-hidden"
+            className="fixed bottom-24 md:bottom-8 right-4 md:right-8 w-[400px] max-w-[calc(100vw-2rem)] h-[600px] max-h-[calc(100vh-10rem)] bg-white rounded-3xl shadow-2xl z-50 flex flex-col border border-slate-100 overflow-hidden"
           >
             {/* Header */}
             <div className="p-4 bg-brand-green text-white flex items-center justify-between shadow-lg">
