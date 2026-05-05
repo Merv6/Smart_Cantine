@@ -152,7 +152,7 @@ export default function Register() {
               className="w-full rounded-xl py-6 mt-4" 
               isLoading={isLoading}
             >
-              Plus d'étapes <ArrowRight className="ml-2" size={18} />
+              Créer mon compte <ArrowRight className="ml-2" size={18} />
             </Button>
           </form>
 
