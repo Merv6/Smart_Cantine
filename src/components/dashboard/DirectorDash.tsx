@@ -51,8 +51,6 @@ export default function DirectorDash({
     try {
       const activeUser = initialUser || (await supabase.auth.getUser()).data.user;
       if (!activeUser) return;
-
-      console.log('📡 Fetching profile/school data for user:', activeUser.id);
       
       const { data: profile, error: profileErr } = await supabase
         .from('profiles')
@@ -143,17 +141,6 @@ export default function DirectorDash({
   const [isPending, setIsPending] = React.useState(false);
   const [isSuccess, setIsSuccess] = React.useState(false);
 
-  const [dailyValidation, setDailyValidation] = React.useState({
-    studentsCount: '420',
-    meal: 'Riz sauce arachide',
-    timestamp: '12:45',
-    photos: [
-      'https://images.unsplash.com/photo-1547592166-23ac45744acd?q=80&w=300&h=200&auto=format&fit=crop',
-      'https://images.unsplash.com/photo-1599481238505-b8b0537a3f77?q=80&w=300&h=200&auto=format&fit=crop'
-    ],
-    isValidated: false
-  });
-
   const [formData, setFormData] = React.useState({
     products: [{ item: 'Riz', quantity: '', unit: 'kg', customItem: '' }],
     time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
@@ -186,14 +173,6 @@ export default function DirectorDash({
     (newProducts[index] as any)[field] = value;
     setFormData({ ...formData, products: newProducts });
   };
-
-  const inventory = [
-    { name: 'Riz', quantity: 450, unit: 'kg', status: 'optimal' },
-    { name: 'Maïs', quantity: 80, unit: 'kg', status: 'low' },
-    { name: 'Haricot', quantity: 120, unit: 'kg', status: 'warning' },
-    { name: 'Huile', quantity: 45, unit: 'L', status: 'optimal' },
-    { name: 'Pâtes', quantity: 200, unit: 'kg', status: 'optimal' },
-  ];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -701,7 +680,10 @@ export default function DirectorDash({
                     </div>
                   </div>
                   <div className="h-2 bg-slate-50 rounded-full overflow-hidden">
-                    <div className="h-full bg-brand-green w-[75%]" />
+                    <div 
+                      className="h-full bg-brand-green transition-all duration-500" 
+                      style={{ width: `${recentReports.length > 0 ? Math.round((recentReports.filter(r => r.is_validated).length / recentReports.length) * 100) : 0}%` }} 
+                    />
                   </div>
                 </div>
 

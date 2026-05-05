@@ -37,38 +37,7 @@ import { Button } from '../ui';
 import { toast } from 'sonner';
 import { supabase } from '../../lib/supabase';
 
-const data = [
-  { name: 'Jan', meals: 4000 },
-  { name: 'Feb', meals: 3000 },
-  { name: 'Mar', meals: 2000 },
-  { name: 'Apr', meals: 2780 },
-  { name: 'May', meals: 1890 },
-  { name: 'Jun', meals: 2390 },
-];
-
-const stockData = [
-  { name: 'Riz', value: 400 },
-  { name: 'Maïs', value: 300 },
-  { name: 'Haricot', value: 300 },
-  { name: 'Huile', value: 200 },
-];
-
 const COLORS = ['#2D6A4F', '#F59E0B', '#3B82F6', '#EF4444'];
-
-const stockEvolutionData = [
-  { name: 'Lun', stock: 1200 },
-  { name: 'Mar', stock: 1100 },
-  { name: 'Mer', stock: 1050 },
-  { name: 'Jeu', stock: 950 },
-  { name: 'Ven', stock: 1300 },
-];
-
-const deptStats = [
-  { name: 'Littoral', schools: 45, pupils: 8200, meals: '120k' },
-  { name: 'Atlantique', schools: 38, pupils: 7100, meals: '95k' },
-  { name: 'Borgou', schools: 30, pupils: 5200, meals: '70k' },
-  { name: 'Ouémé', schools: 29, pupils: 4000, meals: '55k' },
-];
 
 import { BENIN_GEO_DATA } from '../../lib/geoData';
 
@@ -151,8 +120,6 @@ export default function AdminDash({
       if (requestsError) throw requestsError;
       
       setPendingUsers(requests?.filter(r => r.status === 'pending') || []);
-
-      // 2. Fetch stats
       const [schoolsRes, reportsRes, inventoryRes, inventoryAuditRes] = await Promise.all([
         supabase.from('schools').select('*'),
         supabase.from('meal_reports').select('students_count, school_id, created_at'),
@@ -342,10 +309,6 @@ export default function AdminDash({
       } else {
         dbRole = 'DIRECTOR'; 
       }
-
-      console.log('--- FINAL VALIDATION ATTEMPT ---');
-      console.log('Target User ID:', request.user_id);
-      console.log('Mapped Role:', dbRole);
 
       // Force the values to match the EXACT strings in the DB constraint
       const roleToSet = dbRole === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : (dbRole === 'COOK' ? 'COOK' : 'DIRECTOR');
@@ -640,7 +603,7 @@ export default function AdminDash({
                 </div>
                 <div className="h-[300px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={monthlyYield.length > 0 ? monthlyYield : data}>
+                    <BarChart data={monthlyYield}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
                       <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94A3B8', fontSize: 12}} />
                       <YAxis axisLine={false} tickLine={false} tick={{fill: '#94A3B8', fontSize: 12}} />
@@ -656,20 +619,20 @@ export default function AdminDash({
 
               <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm">
                 <div className="flex items-center justify-between mb-8">
-                  <h3 className="text-lg font-bold">Évolution des Stocks Globaux</h3>
-                  <TrendingUp className="text-brand-green" size={18} />
+                  <h3 className="text-lg font-bold">Volume des Stocks Nationaux</h3>
+                  <Package className="text-brand-orange" size={18} />
                 </div>
                 <div className="h-[300px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={stockEvolutionData}>
+                    <BarChart data={globalInventory}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
                       <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94A3B8', fontSize: 12}} />
                       <YAxis axisLine={false} tickLine={false} tick={{fill: '#94A3B8', fontSize: 12}} />
                       <Tooltip 
                         contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)'}}
                       />
-                      <Line type="monotone" dataKey="stock" stroke="#F59E0B" strokeWidth={3} dot={{ r: 4, fill: '#F59E0B' }} activeDot={{ r: 6 }} />
-                    </LineChart>
+                      <Bar dataKey="value" fill="#F59E0B" radius={[6, 6, 0, 0]} />
+                    </BarChart>
                   </ResponsiveContainer>
                 </div>
               </div>
@@ -873,7 +836,7 @@ export default function AdminDash({
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
-                        data={globalInventory.length > 0 ? globalInventory : stockData}
+                        data={globalInventory}
                         cx="50%"
                         cy="50%"
                         innerRadius={80}
@@ -881,7 +844,7 @@ export default function AdminDash({
                         paddingAngle={5}
                         dataKey="value"
                       >
-                        {(globalInventory.length > 0 ? globalInventory : stockData).map((entry, index) => (
+                        {globalInventory.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
@@ -890,15 +853,20 @@ export default function AdminDash({
                   </ResponsiveContainer>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mt-8">
-                  {(globalInventory.length > 0 ? globalInventory : stockData).map((item, i) => (
+                  {globalInventory.map((item, i) => (
                     <div key={i} className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
                       <div className="flex items-center gap-2 mb-2">
-                        <div className="w-3 h-3 rounded-full" style={{backgroundColor: COLORS[i]}} />
+                        <div className="w-3 h-3 rounded-full" style={{backgroundColor: COLORS[i % COLORS.length]}} />
                         <span className="text-slate-400 text-[10px] font-black uppercase tracking-widest">{item.name}</span>
                       </div>
                       <div className="text-xl font-black text-slate-800">{item.value} {item.unit || 'kg'}</div>
                     </div>
                   ))}
+                  {globalInventory.length === 0 && (
+                    <div className="col-span-full text-center py-8 text-slate-400 italic">
+                      Aucune donnée d'inventaire disponible.
+                    </div>
+                  )}
                 </div>
               </div>
           </motion.div>
@@ -917,10 +885,10 @@ export default function AdminDash({
               <div className="space-y-8">
                 <div className="flex items-center gap-6">
                   <div className="w-24 h-24 rounded-3xl bg-brand-green/10 flex items-center justify-center text-brand-green font-black text-3xl shadow-inner italic">
-                    SA
+                    {initialProfile?.full_name?.split(' ').map((n: string) => n[0]).join('') || 'SA'}
                   </div>
                   <div>
-                    <h4 className="text-2xl font-black text-slate-800 tracking-tight">Super Administrateur</h4>
+                    <h4 className="text-2xl font-black text-slate-800 tracking-tight">{initialProfile?.full_name || 'Super Administrateur'}</h4>
                     <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Ministère des Enseignements Maternel et Primaire</p>
                     <div className="flex gap-2 mt-4">
                       <span className="px-3 py-1 bg-brand-green/10 text-brand-green text-[10px] font-black uppercase rounded-full">Accès Total</span>
@@ -933,11 +901,11 @@ export default function AdminDash({
                   <div className="space-y-4">
                     <div>
                       <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Email de service</label>
-                      <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 font-bold text-slate-600">admin@memp.bj</div>
+                      <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 font-bold text-slate-600">{initialUser?.email || 'N/A'}</div>
                     </div>
                     <div>
                       <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Numéro Personnel</label>
-                      <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 font-bold text-slate-600">+229 01 00 00 00 00</div>
+                      <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 font-bold text-slate-600">{initialProfile?.phone || 'N/A'}</div>
                     </div>
                   </div>
                   <div className="space-y-4">

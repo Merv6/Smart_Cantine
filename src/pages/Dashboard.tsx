@@ -2,22 +2,14 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  BarChart, 
   LayoutDashboard, 
-  ChefHat, 
-  Settings, 
-  Bell, 
-  Search,
-  School,
-  LogOut,
-  User,
-  AlertCircle,
-  CheckCircle,
-  Package,
-  Utensils,
-  Menu,
-  X,
-  ChevronLeft,
+  School, 
+  LogOut, 
+  User, 
+  AlertCircle, 
+  CheckCircle, 
+  Package, 
+  Utensils, 
   Clock
 } from 'lucide-react';
 import { UserRole } from '../types';
@@ -25,6 +17,7 @@ import AdminDash from '../components/dashboard/AdminDash';
 import DirectorDash from '../components/dashboard/DirectorDash';
 import CookDash from '../components/dashboard/CookDash';
 import Chatbot from '../components/dashboard/Chatbot';
+import Sidebar from '../components/dashboard/Sidebar';
 import AccountValidationForm from '../components/dashboard/AccountValidationForm';
 import { Button } from '../components/ui';
 import { supabase } from '../lib/supabase';
@@ -52,7 +45,7 @@ function ViewRenderer({
     return <DirectorDash user={user} profile={profile} isValidated={isValidated} initialView={view as any} onViewChange={onViewChange} />;
   }
 
-  if (role === UserRole.COOK) return <CookDash user={user} profile={profile} isValidated={isValidated} />;
+  if (role === UserRole.COOK) return <CookDash user={user} profile={profile} isValidated={isValidated} view={view} />;
 
   return null;
 }
@@ -67,13 +60,13 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [initError, setInitError] = React.useState<string | null>(null);
   const [showValidationModal, setShowValidationModal] = React.useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const navigate = useNavigate();
 
   React.useEffect(() => {
     const handleResize = () => {
-      if (window.innerWidth >= 1024) {
+      if (window.innerWidth >= 768) {
         setIsMobileMenuOpen(false);
       }
     };
@@ -249,34 +242,6 @@ export default function Dashboard() {
     navigate('/login');
   };
 
-  // Get menu items based on role
-  const menuItems = React.useMemo(() => {
-    if (role === UserRole.SUPER_ADMIN) {
-      return [
-        { id: 'overview', label: "Tableau de Bord", icon: <LayoutDashboard size={20} /> },
-        { id: 'validations', label: "Validations", icon: <CheckCircle size={20} /> },
-        { id: 'schools', label: "Gestion Écoles", icon: <School size={20} /> },
-        { id: 'inventory', label: "Stock National", icon: <Package size={20} /> },
-        { id: 'profile', label: "Mon Profil", icon: <User size={20} /> },
-        { id: 'settings', label: "Paramètres", icon: <Settings size={20} /> },
-      ];
-    }
-    if (role === UserRole.DIRECTOR) {
-      return [
-        { id: 'overview', label: "Vue d'ensemble", icon: <LayoutDashboard size={20} /> },
-        { id: 'validate_meals', label: "Validation Repas", icon: <CheckCircle size={20} /> },
-        { id: 'inventory', label: "Gestion des stocks", icon: <Package size={20} /> },
-        { id: 'canteen', label: "Ma Cantine", icon: <Utensils size={20} /> },
-        { id: 'profile', label: "Mon Profil", icon: <User size={20} /> },
-        { id: 'settings', label: "Paramètres", icon: <Settings size={20} /> },
-      ];
-    }
-    return [
-      { id: 'overview', label: "Mon Service", icon: <Utensils size={20} /> },
-      { id: 'profile', label: "Mon Profil", icon: <User size={20} /> },
-    ];
-  }, [role]);
-
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-brand-light">
@@ -360,108 +325,20 @@ export default function Dashboard() {
         )}
       </AnimatePresence>
 
-      <div className="flex flex-col lg:flex-row flex-1 relative bg-slate-50/30">
-        {/* Mobile Header Toggle */}
-        <div className="lg:hidden flex items-center justify-between p-4 bg-white border-b border-slate-200 sticky top-0 z-[140] shadow-sm">
-           <button 
-             onClick={() => setIsMobileMenuOpen(true)}
-             className="p-2 text-slate-600 hover:bg-slate-50 rounded-xl transition-colors"
-           >
-             <Menu size={24} />
-           </button>
-           <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-brand-green flex items-center justify-center text-white text-[10px] font-black shadow-sm">
-                SC
-              </div>
-              <span className="font-black text-slate-800 text-sm tracking-tighter uppercase">SmartCantine</span>
-           </div>
-           <div className="w-10" />
-        </div>
-
-        {/* Sidebar Navigation */}
-        <aside 
-          className={`bg-white border-r border-slate-200 flex flex-col fixed inset-y-0 left-0 z-[160] lg:sticky lg:top-0 lg:h-screen shadow-2xl lg:shadow-none transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
-            isSidebarCollapsed ? 'lg:w-[80px]' : 'lg:w-72'
-          } ${isMobileMenuOpen ? 'translate-x-0 w-[280px]' : '-translate-x-full lg:translate-x-0 w-[280px] lg:w-auto'}`}
-        >
-          <div className="lg:hidden absolute top-6 right-6">
-            <button 
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="p-2 text-slate-400 hover:text-slate-600 bg-slate-50 rounded-full"
-            >
-              <X size={20} />
-            </button>
-          </div>
-
-          <div className="flex flex-col h-full py-8">
-            {/* Logo Section */}
-            <div className={`px-6 mb-10 transition-all ${isSidebarCollapsed ? 'lg:px-4' : ''}`}>
-               <div className={`flex items-center gap-3 ${isSidebarCollapsed ? 'lg:justify-center' : ''}`}>
-                  <div className="w-10 h-10 shrink-0 rounded-xl bg-brand-green flex items-center justify-center text-white shadow-lg shadow-brand-green/20">
-                    <Utensils size={20} />
-                  </div>
-                  {!isSidebarCollapsed && (
-                    <div className="flex flex-col text-left">
-                      <span className="font-black text-slate-900 leading-none tracking-tighter">SmartCantine</span>
-                      <span className="text-[10px] font-bold text-brand-green uppercase tracking-widest mt-1">Plateforme</span>
-                    </div>
-                  )}
-               </div>
-            </div>
-
-            {/* Nav Items */}
-            <nav className={`flex-1 px-4 space-y-1.5 overflow-y-auto ${isSidebarCollapsed ? 'lg:px-3' : ''}`}>
-              {menuItems.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => {
-                    setActiveTab(tab.id);
-                    setIsMobileMenuOpen(false);
-                  }}
-                  className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl font-bold transition-all group relative ${
-                    activeTab === tab.id 
-                    ? 'bg-brand-green text-white shadow-lg shadow-brand-green/20' 
-                    : 'text-slate-400 hover:bg-slate-50 hover:text-slate-700'
-                  } ${isSidebarCollapsed ? 'lg:justify-center lg:px-0' : ''}`}
-                >
-                  <div className={`shrink-0 transition-transform group-hover:scale-110 ${isSidebarCollapsed ? 'lg:flex lg:justify-center' : ''}`}>
-                    {tab.icon}
-                  </div>
-                  {!isSidebarCollapsed && <span className="truncate">{tab.label}</span>}
-                  
-                  {isSidebarCollapsed && (
-                    <div className="absolute left-full ml-4 px-3 py-2 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 shadow-xl pointer-events-none">
-                      {tab.label}
-                    </div>
-                  )}
-                </button>
-              ))}
-            </nav>
-
-            {/* Actions Section */}
-            <div className={`px-4 pt-4 border-t border-slate-100 space-y-1.5 ${isSidebarCollapsed ? 'lg:px-3' : ''}`}>
-              <button 
-                onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-                className={`hidden lg:flex w-full items-center gap-3 px-4 py-3.5 rounded-xl font-bold text-slate-400 hover:bg-slate-50 hover:text-slate-700 transition-all group ${isSidebarCollapsed ? 'justify-center border border-slate-100' : ''}`}
-              >
-                <div className={`transition-transform duration-500 ${isSidebarCollapsed ? 'rotate-180' : ''}`}>
-                  <ChevronLeft size={20} />
-                </div>
-                {!isSidebarCollapsed && <span>Réduire</span>}
-              </button>
-              <button 
-                onClick={() => setShowLogoutConfirm(true)}
-                className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl font-bold text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all group ${isSidebarCollapsed ? 'lg:justify-center' : ''}`}
-              >
-                <LogOut size={20} className="group-hover:-translate-x-1 transition-transform" />
-                {!isSidebarCollapsed && <span>Déconnexion</span>}
-              </button>
-            </div>
-          </div>
-        </aside>
+      <div className="flex flex-row flex-1 relative bg-slate-50/30 overflow-hidden">
+        <Sidebar 
+          role={role}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          isCollapsed={isSidebarCollapsed}
+          setIsCollapsed={setIsSidebarCollapsed}
+          isMobileOpen={isMobileMenuOpen}
+          setIsMobileOpen={setIsMobileMenuOpen}
+          onLogout={() => setShowLogoutConfirm(true)}
+        />
 
         {/* Main Content Area */}
-        <main className="flex-1 p-4 lg:p-10 overflow-auto bg-white/40">
+        <main className="flex-1 p-4 md:p-8 lg:p-10 overflow-auto bg-white/40">
           <AnimatePresence mode="wait">
             <motion.div
               key={(role || '') + activeTab}
