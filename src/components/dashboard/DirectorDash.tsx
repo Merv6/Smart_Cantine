@@ -517,6 +517,12 @@ export default function DirectorDash({
     );
   }
 
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour < 18) return 'Bonjour';
+    return 'Bonsoir';
+  };
+
   return (
     <div className="space-y-6 pb-12 text-left">
       {/* Header & Navigation */}
@@ -602,7 +608,7 @@ export default function DirectorDash({
                       {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
                     </div>
                     <div className="space-y-1">
-                      <h2 className="text-3xl font-black font-display leading-tight">Bonjour, {initialProfile?.full_name || 'Directeur'}</h2>
+                      <h2 className="text-3xl font-black font-display leading-tight">{getGreeting()}, {initialProfile?.full_name || 'cher utilisateur'}</h2>
                       <p className="text-emerald-50 opacity-90 max-w-md font-medium">Tout est en ordre à {schoolInfo?.name || 'votre établissement'}. {schoolInfo?.capacity || '---'} élèves attendent leur repas.</p>
                     </div>
                     <div className="flex gap-4 pt-4">

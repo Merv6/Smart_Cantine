@@ -225,20 +225,25 @@ export default function CookDash({
 
   const isStep1Valid = studentsCount !== '' && (meal !== 'Autre' || customMeal.trim() !== '');
 
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour < 18) return 'Bonjour';
+    return 'Bonsoir';
+  };
+
   return (
     <div className="space-y-8 pb-12">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-black text-slate-800">
+            {getGreeting()}, {userProfile?.full_name || 'cher utilisateur'}
+          </h1>
+          <p className="text-slate-500 font-medium">
             {view === 'overview' && 'Tableau de Bord'}
             {view === 'rapport' && 'Rapport Journalier'}
             {view === 'inventory' && 'Gestion des Stocks'}
             {view === 'profile' && 'Mon Profil'}
-            {view === 'settings' && 'Paramètres'}
-          </h1>
-          <p className="text-slate-500 font-medium">
-            {userProfile?.full_name ? `${userProfile.full_name} • ` : ''}
-            {schoolId ? 'Cantine Scolaire' : 'En attente de rattachement école'}
+            {view === 'settings' && 'Paramètres'} • {schoolId ? 'Cantine Scolaire' : 'En attente de rattachement école'}
           </p>
         </div>
         <div className="bg-white border border-slate-200 px-4 py-2 rounded-2xl flex items-center gap-3 shadow-sm">
