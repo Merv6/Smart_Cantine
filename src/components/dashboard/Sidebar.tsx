@@ -11,7 +11,9 @@ import {
   LogOut, 
   ChevronLeft,
   X,
-  Menu
+  Menu,
+  Activity,
+  FileText
 } from 'lucide-react';
 import { UserRole } from '../../types';
 
@@ -44,8 +46,10 @@ export default function Sidebar({
           title: "PLATEFORME",
           items: [
             { id: 'overview', label: "Dashboard", icon: <LayoutDashboard size={20} /> },
+            { id: 'activity_feed', label: "Flux d'Activité", icon: <Activity size={20} /> },
             { id: 'validations', label: "Validations", icon: <CheckCircle size={20} /> },
             { id: 'schools', label: "Gestion Écoles", icon: <School size={20} /> },
+            { id: 'history', label: "Historique Rapports", icon: <FileText size={20} /> },
             { id: 'inventory', label: "Stock National", icon: <Package size={20} /> },
           ]
         },
@@ -64,7 +68,7 @@ export default function Sidebar({
           title: "ÉCOLE",
           items: [
             { id: 'overview', label: "Vue d'ensemble", icon: <LayoutDashboard size={20} /> },
-            { id: 'validate_meals', label: "Validation Repas", icon: <CheckCircle size={20} /> },
+            { id: 'history', label: "Historique Rapports", icon: <FileText size={20} /> },
             { id: 'inventory', label: "Gestion Stocks", icon: <Package size={20} /> },
             { id: 'canteen', label: "Ma Cantine", icon: <Utensils size={20} /> },
           ]
@@ -217,7 +221,7 @@ export default function Sidebar({
               }`}
             >
               <div className={`transition-transform duration-300 ${isActive ? 'scale-110' : ''}`}>
-                {React.cloneElement(item.icon as React.ReactElement, { size: 20 })}
+                {React.cloneElement(item.icon as React.ReactElement<any>, { size: 20 })}
               </div>
               <span className={`text-[10px] font-bold truncate w-full text-center ${isActive ? 'opacity-100' : 'opacity-80'}`}>
                 {item.label}

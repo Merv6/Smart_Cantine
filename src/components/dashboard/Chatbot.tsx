@@ -103,7 +103,7 @@ export default function Chatbot() {
     <>
       <button 
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-24 md:bottom-8 right-4 md:right-8 bg-brand-orange text-white p-4 rounded-full shadow-2xl hover:scale-110 active:scale-95 transition-all z-40 group"
+        className="fixed bottom-24 md:bottom-8 right-4 md:right-8 bg-brand-green text-white p-4 rounded-full shadow-2xl hover:scale-110 active:scale-95 transition-all z-40 group"
       >
         <MessageSquare size={28} />
         <span className="absolute right-full mr-4 top-1/2 -translate-y-1/2 bg-slate-900 text-white text-xs px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">

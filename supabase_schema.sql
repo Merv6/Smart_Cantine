@@ -250,3 +250,14 @@ CREATE POLICY "Users can create validation request" ON validation_requests FOR I
 
 DROP POLICY IF EXISTS "Users view own validation request" ON validation_requests;
 CREATE POLICY "Users view own validation request" ON validation_requests FOR SELECT USING (auth.uid() = user_id);
+
+-- Index pour accélérer les filtres utilisés par le dashboard
+CREATE INDEX IF NOT EXISTS idx_inventory_school_id ON public.inventory(school_id);
+CREATE INDEX IF NOT EXISTS idx_inventory_updated_at ON public.inventory(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_meal_reports_school_id ON public.meal_reports(school_id);
+CREATE INDEX IF NOT EXISTS idx_meal_reports_created_at ON public.meal_reports(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_meal_reports_cook_id ON public.meal_reports(cook_id);
+CREATE INDEX IF NOT EXISTS idx_validation_requests_user_id ON public.validation_requests(user_id);
+CREATE INDEX IF NOT EXISTS idx_validation_requests_status ON public.validation_requests(status);
+CREATE INDEX IF NOT EXISTS idx_profiles_role ON public.profiles(role);
+CREATE INDEX IF NOT EXISTS idx_profiles_school_id ON public.profiles(school_id);

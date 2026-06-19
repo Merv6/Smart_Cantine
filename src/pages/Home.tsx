@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { ShieldCheck, TrendingUp, Users, Package, ArrowRight, CheckCircle2, ChevronRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '../components/ui';
+import heroBgImage from '../assets/images/happy_african_children_1779573305156.png';
 
 export default function Home() {
   const features = [
@@ -35,8 +36,8 @@ export default function Home() {
       <section className="relative h-[650px] flex items-center overflow-hidden">
         <div className="absolute inset-0 z-0">
           <img
-            src="https://images.unsplash.com/photo-1542810634-71277d95dcbb?q=80&w=2000"
-            alt="Students in Benin school"
+            src={heroBgImage}
+            alt="Enfants heureux de la cantine scolaire au Bénin"
             className="w-full h-full object-cover"
             referrerPolicy="no-referrer"
           />
