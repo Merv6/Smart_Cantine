@@ -34,7 +34,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 
 import { supabase } from '../../lib/supabase';
-import { PhotoGallery } from './widgets/PhotoGallery';
 
 export default function DirectorDash({ 
   isValidated, 
@@ -68,12 +67,10 @@ export default function DirectorDash({
 
   const [realInventory, setRealInventory] = React.useState<any[] | null>(null);
   const [recentReports, setRecentReports] = React.useState<any[] | null>(null);
-  const [loadingInventory, setLoadingInventory] = React.useState(true);
-  const [loadingReports, setLoadingReports] = React.useState(true);
+  const [loading, setLoading] = React.useState(true);
   
   const fetchData = React.useCallback(async () => {
-    setLoadingInventory(true);
-    setLoadingReports(true);
+    setLoading(true);
     try {
       const activeUser = initialUser || (await supabase.auth.getUser()).data.user;
       if (!activeUser) return;
@@ -158,8 +155,7 @@ export default function DirectorDash({
     } catch (err) {
       console.error('Erreur fetching director data:', err);
     } finally {
-      setLoadingInventory(false);
-      setLoadingReports(false);
+      setLoading(false);
     }
   }, [initialUser, initialProfile, isValidated]);
 
@@ -468,7 +464,6 @@ export default function DirectorDash({
   };
 
   const handleEditInventory = async (item: any) => {
-    console.log("Edit clicked", item);
     const newQty = prompt("Nouvelle quantité (" + item.unit + "):", item.quantity.toString());
     if (newQty !== null && !isNaN(Number(newQty))) {
       try {
@@ -477,8 +472,8 @@ export default function DirectorDash({
           .update({ quantity: Number(newQty), updated_at: new Date().toISOString() })
           .eq('id', item.id);
         if (error) throw error;
-        setRealInventory(prev => prev.map(i => i.id === item.id ? { ...i, quantity: Number(newQty), updated_at: new Date().toISOString() } : i));
         toast.success("Quantité mise à jour");
+        fetchData();
       } catch(err) {
         console.error(err);
         toast.error("Erreur mise à jour");
@@ -487,7 +482,6 @@ export default function DirectorDash({
   };
 
   const handleDeleteInventory = async (item: any) => {
-    console.log("Delete clicked", item);
     if (confirm("Supprimer " + item.item_name + " de l'inventaire ?")) {
       try {
         const { error } = await supabase
@@ -495,8 +489,8 @@ export default function DirectorDash({
           .delete()
           .eq('id', item.id);
         if (error) throw error;
-        setRealInventory(prev => prev.filter(i => i.id !== item.id));
         toast.success("Produit supprimé");
+        fetchData();
       } catch(err) {
         console.error(err);
         toast.error("Erreur suppression");
@@ -874,7 +868,7 @@ export default function DirectorDash({
                       <div className="w-2 h-2 bg-brand-orange rounded-full animate-ping" />
                     </div>
                     <div className="space-y-4">
-                      {loadingInventory || !realInventory ? (
+                      {loading || !realInventory ? (
                         Array.from({ length: 2 }).map((_, i) => (
                           <div key={i} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between animate-pulse">
                             <div className="space-y-2 flex-1">
@@ -920,7 +914,7 @@ export default function DirectorDash({
                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
                     <div className="space-y-2">
                       <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Repas</div>
-                      {loadingReports || !recentReports ? (
+                      {loading || !recentReports ? (
                         <div className="h-8 bg-slate-200 rounded animate-pulse w-16" />
                       ) : (
                         <div className="text-3xl font-black text-slate-800">{recentReports.length.toLocaleString()}</div>
@@ -929,7 +923,7 @@ export default function DirectorDash({
                     </div>
                     <div className="space-y-2">
                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Élèves nourris</div>
-                       {loadingReports || !recentReports ? (
+                       {loading || !recentReports ? (
                          <div className="h-8 bg-slate-200 rounded animate-pulse w-16" />
                        ) : (
                          <div className="text-3xl font-black text-slate-800">{recentReports.reduce((acc, curr) => acc + (curr.students_count || 0), 0).toLocaleString()}</div>
@@ -938,7 +932,7 @@ export default function DirectorDash({
                     </div>
                     <div className="space-y-2">
                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Vivres Reçus</div>
-                      {loadingInventory || !realInventory ? (
+                       {loading || !realInventory ? (
                          <div className="h-8 bg-slate-200 rounded animate-pulse w-20" />
                        ) : (
                          <div className="text-3xl font-black text-slate-800">{realInventory.reduce((acc, curr) => acc + (Number(curr.quantity) || 0), 0).toLocaleString()} <span className="text-sm">kg/L</span></div>
@@ -947,7 +941,7 @@ export default function DirectorDash({
                     </div>
                     <div className="space-y-2">
                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Validations</div>
-                       {loadingReports || !recentReports ? (
+                       {loading || !recentReports ? (
                          <div className="h-8 bg-slate-200 rounded animate-pulse w-12" />
                        ) : (
                          <div className="text-3xl font-black text-slate-800">{recentReports.filter(r => r.is_validated).length}</div>
@@ -973,7 +967,7 @@ export default function DirectorDash({
                       <h3 className="font-bold text-lg">Validation Rapide</h3>
                     </div>
                     <div className="space-y-4">
-                      {loadingReports || !recentReports ? (
+                      {loading || !recentReports ? (
                         <div className="space-y-3 animate-pulse">
                           <div className="h-4 bg-white/10 rounded w-full" />
                           <div className="h-12 bg-white/5 border border-white/10 rounded-2xl w-full" />
@@ -993,7 +987,7 @@ export default function DirectorDash({
                       )}
                     </div>
                   </div>
-                  {loadingReports || !recentReports ? (
+                  {loading || !recentReports ? (
                     <div className="h-12 bg-white/10 rounded-2xl animate-pulse w-full" />
                   ) : recentReports.filter(r => !r.is_validated).length > 0 && (
                     <Button onClick={() => setView('history')} className="w-full bg-brand-orange hover:bg-brand-orange/90 rounded-2xl py-6 font-black uppercase text-xs tracking-widest">
@@ -1048,7 +1042,7 @@ export default function DirectorDash({
                   )}
                 </AnimatePresence>
 
-                {loadingReports ? (
+                {loading ? (
                    <div className="space-y-3">
                      <div className="h-10 bg-slate-100 rounded-xl animate-pulse w-full" />
                    </div>
@@ -1123,7 +1117,7 @@ export default function DirectorDash({
 
               {/* Reports List */}
               <div className="space-y-6">
-                {loadingReports ? (
+                {loading ? (
                   <div className="bg-white rounded-[2.5rem] p-12 border border-slate-100 text-center animate-pulse space-y-4">
                     <Loader2 className="animate-spin text-slate-400 mx-auto" size={32} />
                     <p className="text-sm text-slate-400 font-medium">Chargement des rapports...</p>
@@ -1205,7 +1199,14 @@ export default function DirectorDash({
                           <div className="pt-4 border-t border-slate-100">
                             <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-2">Preuves Photos (Cliquer pour agrandir)</span>
                             <div className="flex items-center gap-3 overflow-x-auto py-1 scrollbar-hide">
-                              <PhotoGallery photos={report.photos} />
+                              {report.photos.map((photo: string, pIdx: number) => (
+                                <div 
+                                  key={pIdx} 
+                                  className="w-24 h-24 rounded-2xl overflow-hidden border border-slate-200 relative group shrink-0"
+                                >
+                                  <img src={photo} className="w-full h-full object-cover transition-transform group-hover:scale-105" alt={`Preuve Repas ${pIdx + 1}`} referrerPolicy="no-referrer" />
+                                </div>
+                              ))}
                             </div>
                           </div>
                         )}
@@ -1264,7 +1265,7 @@ export default function DirectorDash({
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {loadingInventory || !realInventory ? (
+                {loading || !realInventory ? (
                   Array.from({ length: 4 }).map((_, i) => (
                     <div key={i} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4 animate-pulse">
                       <div className="flex justify-between items-start">
@@ -1298,10 +1299,10 @@ export default function DirectorDash({
                           </div>
                           <div className="flex items-center gap-3">
                             <div className="flex items-center gap-2">
-                              <button onClick={(e) => { e.stopPropagation(); handleEditInventory(item); }} className="text-slate-400 hover:text-brand-green p-1.5 rounded-full hover:bg-slate-50 transition-colors">
+                              <button onClick={() => handleEditInventory(item)} className="text-slate-400 hover:text-brand-green p-1.5 rounded-full hover:bg-slate-50 transition-colors">
                                 <Edit2 size={16} />
                               </button>
-                              <button onClick={(e) => { e.stopPropagation(); handleDeleteInventory(item); }} className="text-slate-400 hover:text-red-500 p-1.5 rounded-full hover:bg-slate-50 transition-colors">
+                              <button onClick={() => handleDeleteInventory(item)} className="text-slate-400 hover:text-red-500 p-1.5 rounded-full hover:bg-slate-50 transition-colors">
                                 <Trash2 size={16} />
                               </button>
                             </div>

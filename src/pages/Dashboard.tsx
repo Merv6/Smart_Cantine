@@ -61,12 +61,6 @@ export default function Dashboard() {
   const [isValidationPending, setIsValidationPending] = React.useState<boolean>(false);
   const [activeTab, setActiveTab] = React.useState('overview');
   const [isLoading, setIsLoading] = React.useState(true);
-  const isLoadingRef = React.useRef(true);
-  
-  React.useEffect(() => {
-    isLoadingRef.current = isLoading;
-  }, [isLoading]);
-  
   const [initError, setInitError] = React.useState<string | null>(null);
   const [showValidationModal, setShowValidationModal] = React.useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(true);
@@ -90,20 +84,17 @@ export default function Dashboard() {
       const activeUser = currentUser || (await supabase.auth.getUser()).data.user;
       
       if (!activeUser) {
-        if (!isLoadingRef.current) navigate('/login');
+        if (!isLoading) navigate('/login');
         return null;
       }
 
       setUser(activeUser);
 
-      // Fetch profile and check pending validation at start concurrently
-      const [profileRes, validationRes] = await Promise.all([
-        supabase.from('profiles').select('*').eq('id', activeUser.id).maybeSingle(),
-        supabase.from('validation_requests').select('status').eq('user_id', activeUser.id).eq('status', 'pending').maybeSingle()
-      ]);
-      
-      const { data: userProfile, error } = profileRes;
-      const { data: request } = validationRes;
+      const { data: userProfile, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', activeUser.id)
+        .maybeSingle();
 
       if (error) {
         if (error.message.includes('Failed to fetch')) {
@@ -155,7 +146,14 @@ export default function Dashboard() {
         setIsValidated(userProfile.is_validated);
         
         if (!userProfile.is_validated) {
-            if (request) {
+          const { data: request } = await supabase
+            .from('validation_requests')
+            .select('status')
+            .eq('user_id', activeUser.id)
+            .eq('status', 'pending')
+            .maybeSingle();
+            
+          if (request) {
             setIsValidationPending(true);
           }
         }
@@ -172,7 +170,7 @@ export default function Dashboard() {
       setIsLoading(false);
       return null;
     }
-  }, [navigate]);
+  }, [navigate, isLoading]);
 
   React.useEffect(() => {
     const initDashboard = async () => {
@@ -185,11 +183,8 @@ export default function Dashboard() {
 
       await checkAuth(currentUser);
 
-      // Define and hold channels in a ref to clean up properly
-      const profileChannel = supabase
-        .channel(`profile_changes_${currentUser.id}`);
-      
-      profileChannel
+      const subscription = supabase
+        .channel(`profile_changes_${currentUser.id}`)
         .on(
           'postgres_changes',
           {
@@ -210,10 +205,8 @@ export default function Dashboard() {
         )
         .subscribe();
 
-      const requestChannel = supabase
-        .channel(`request_changes_${currentUser.id}`);
-        
-      requestChannel
+      const requestSub = supabase
+        .channel(`request_changes_${currentUser.id}`)
         .on(
           'postgres_changes',
           {
@@ -234,8 +227,8 @@ export default function Dashboard() {
         .subscribe();
 
       return () => {
-        supabase.removeChannel(profileChannel);
-        supabase.removeChannel(requestChannel);
+        subscription.unsubscribe();
+        requestSub.unsubscribe();
       };
     };
 

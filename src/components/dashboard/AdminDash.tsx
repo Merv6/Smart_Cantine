@@ -1,4 +1,4 @@
-import React, { lazy, Suspense } from 'react';
+import React from 'react';
 import { 
   Users, 
   School, 
@@ -43,20 +43,12 @@ import {
 } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from '../ui';
-import { Skeleton } from '../ui/Skeleton';
 import { toast } from 'sonner';
-const StatCards = lazy(() => import('./widgets/StatCards').then(m => ({ default: m.StatCards })));
-const RequestsWidget = lazy(() => import('./widgets/RequestsWidget').then(m => ({ default: m.RequestsWidget })));
-const InventoryWidget = lazy(() => import('./widgets/InventoryWidget').then(m => ({ default: m.InventoryWidget })));
-const ActivityFeedWidget = lazy(() => import('./widgets/ActivityFeedWidget').then(m => ({ default: m.ActivityFeedWidget })));
-const MonthlyYieldWidget = lazy(() => import('./widgets/MonthlyYieldWidget').then(m => ({ default: m.MonthlyYieldWidget })));
-const GlobalInventoryWidget = lazy(() => import('./widgets/GlobalInventoryWidget').then(m => ({ default: m.GlobalInventoryWidget })));
-import { PhotoGallery } from './widgets/PhotoGallery';
+import { supabase } from '../../lib/supabase';
 
 const COLORS = ['#2D6A4F', '#F59E0B', '#3B82F6', '#EF4444'];
 
 import { BENIN_GEO_DATA } from '../../lib/geoData';
-import { supabase } from '../../lib/supabase';
 
 export default function AdminDash({ 
   isValidated,
@@ -95,7 +87,6 @@ export default function AdminDash({
   const [startDate, setStartDate] = React.useState('');
   const [endDate, setEndDate] = React.useState('');
   const [selectedPhotosReport, setSelectedPhotosReport] = React.useState<any | null>(null);
-  const [selectedJustificatif, setSelectedJustificatif] = React.useState<any | null>(null);
 
   const [newSchool, setNewSchool] = React.useState({
     name: '',
@@ -122,12 +113,20 @@ export default function AdminDash({
     pendingRequests: null,
     totalMeals: null
   });
+  const [monthlyYield, setMonthlyYield] = React.useState<any[]>([]);
   const [globalInventory, setGlobalInventory] = React.useState<any[]>([]);
   const [isLoadingStats, setIsLoadingStats] = React.useState(true);
   const [detailedMealReports, setDetailedMealReports] = React.useState<any[] | null>(null);
   const [detailedInventoryFeed, setDetailedInventoryFeed] = React.useState<any[]>([]);
-  const [monthlyYield, setMonthlyYield] = React.useState<any[]>([]);
-  
+  const [localValidatedArrivals, setLocalValidatedArrivals] = React.useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem('validated_arrivals');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+
   // School Details Modal States
   const [selectedSchoolDetails, setSelectedSchoolDetails] = React.useState<any | null>(null);
   const [selectedSchoolStaff, setSelectedSchoolStaff] = React.useState<any[]>([]);
@@ -139,8 +138,10 @@ export default function AdminDash({
   const fetchDashboardData = React.useCallback(async () => {
     setIsLoadingStats(true);
     try {
-      const [requestsRes, schoolsRes, reportsRes, inventoryRes, inventoryAuditRes, mealReportsRes, schoolsDetailedRes, allInventoryDetailedRes] = await Promise.all([
-        supabase.from('validation_requests').select(`
+      // 1. Fetch pending validation requests
+      const { data: requests, error: requestsError } = await supabase
+        .from('validation_requests')
+        .select(`
           id,
           user_id,
           full_name,
@@ -156,28 +157,22 @@ export default function AdminDash({
             arrondissement,
             phone
           )
-        `).order('created_at', { ascending: false }),
-        supabase.from('schools').select('*'),
-        supabase.from('meal_reports').select('students_count, school_id, created_at').limit(500),
-        supabase.from('inventory').select('item_name, quantity, updated_at').limit(500),
-        supabase.from('inventory').select('item_name, quantity, updated_at, school_id, schools(name)').order('updated_at', { ascending: false }).limit(5),
-        supabase.from('meal_reports').select('*').order('created_at', { ascending: false }).limit(200),
-        supabase.from('schools').select('id, name, department, commune, arrondissement'),
-        supabase.from('inventory').select('id, item_name, quantity, unit, updated_at, school_id, schools(name, department, commune, arrondissement)').order('updated_at', { ascending: false }).limit(100)
-      ]);
-      
-      const requests = requestsRes.data;
-      if (requestsRes.error) throw requestsRes.error;
-      if (schoolsRes.error) console.error("Error fetching schools:", schoolsRes.error);
-      if (reportsRes.error) console.error("Error fetching reports:", reportsRes.error);
-      if (inventoryRes.error) console.error("Error fetching inventory:", inventoryRes.error);
-      if (inventoryAuditRes.error) console.error("Error fetching inventory audit:", inventoryAuditRes.error);
-      if (mealReportsRes.error) console.error("Error fetching meal reports:", mealReportsRes.error);
-      if (schoolsDetailedRes.error) console.error("Error fetching detailed schools:", schoolsDetailedRes.error);
-      if (allInventoryDetailedRes.error) console.error("Error fetching detailed inventory:", allInventoryDetailedRes.error);
+        `)
+        .order('created_at', { ascending: false });
+
+      if (requestsError) throw requestsError;
       
       setPendingUsers(requests?.filter(r => r.status === 'pending') || []);
-      
+      const [schoolsRes, reportsRes, inventoryRes, inventoryAuditRes, mealReportsRes, schoolsDetailedRes, allInventoryDetailedRes] = await Promise.all([
+        supabase.from('schools').select('*').then(res => { if (res.error) console.error("Error fetching schools:", res.error); return res; }),
+        supabase.from('meal_reports').select('students_count, school_id, created_at').then(res => { if (res.error) console.error("Error fetching simple meal_reports:", res.error); return res; }),
+        supabase.from('inventory').select('item_name, quantity, updated_at').then(res => { if (res.error) console.error("Error fetching simple inventory:", res.error); return res; }),
+        supabase.from('inventory').select('item_name, quantity, updated_at, school_id, schools(name)').order('updated_at', { ascending: false }).limit(5).then(res => { if (res.error) console.error("Error fetching inventory audit:", res.error); return res; }),
+        supabase.from('meal_reports').select('*').order('created_at', { ascending: false }).then(res => { if (res.error) console.error("Error fetching meal_reports:", res.error); return res; }),
+        supabase.from('schools').select('id, name, department, commune, arrondissement').then(res => { if (res.error) console.error("Error fetching detailed schools:", res.error); return res; }),
+        supabase.from('inventory').select('id, item_name, quantity, unit, updated_at, school_id, schools(name, department, commune, arrondissement)').order('updated_at', { ascending: false }).limit(100).then(res => { if (res.error) console.error("Error fetching detailed inventory:", res.error); return res; })
+      ]);
+
       const schools = schoolsRes.data || [];
       const reports = reportsRes.data || [];
       const inventory = inventoryRes.data || [];
@@ -338,6 +333,13 @@ export default function AdminDash({
   }, [fetchDashboardData]);
 
   const [pendingStocks, setPendingStocks] = React.useState<any[]>([]);
+
+  const stats = React.useMemo(() => [
+    { label: "Écoles Actives", value: statsData.activeSchools?.toString(), icon: <School className="text-brand-green" />, trend: "Total" },
+    { label: "Total Élevés", value: statsData.totalStudents?.toLocaleString(), icon: <Users className="text-blue-500" />, trend: "Cumulative" },
+    { label: "Demandes en attente", value: statsData.pendingRequests?.toString(), icon: <AlertTriangle className="text-brand-orange" />, trend: "Action requise" },
+    { label: "Repas Total", value: statsData.totalMeals?.toLocaleString(), icon: <CheckCircle className="text-emerald-500" />, trend: "Servis" },
+  ], [statsData]);
 
   const approveUser = async (requestId: string) => {
     const request = pendingUsers.find(r => r.id === requestId);
@@ -551,29 +553,6 @@ export default function AdminDash({
     if (!window.confirm("Êtes-vous sûr de vouloir supprimer définitivement ce rapport de repas ?")) return;
     setIsProcessing(`delete-report-${reportId}`);
     try {
-      // 1. Fetch record first to get photo URLs
-      const { data: record, error: fetchError } = await supabase
-        .from('meal_reports')
-        .select('photos')
-        .eq('id', reportId)
-        .single();
-      
-      if (fetchError) throw fetchError;
-      
-      // 2. Delete photos if they exist
-      if (record?.photos && record.photos.length > 0) {
-        const paths = record.photos.map((url: string) => {
-            // Extract path after '/proofs/'
-             const parts = url.split('/proofs/');
-             return parts.length > 1 ? parts[1] : null;
-        }).filter(Boolean); // keep non-null
-
-        if (paths.length > 0) {
-            await supabase.storage.from('proofs').remove(paths);
-        }
-      }
-
-      // 3. Delete record
       const { error } = await supabase
         .from('meal_reports')
         .delete()
@@ -999,43 +978,6 @@ export default function AdminDash({
                         </motion.div>
                     </motion.div>
                 )}
-                {selectedJustificatif && (
-                    <motion.div 
-                        initial={{ opacity: 0 }} 
-                        animate={{ opacity: 1 }} 
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-xs"
-                        onClick={() => setSelectedJustificatif(null)}
-                    >
-                        <motion.div 
-                            initial={{ scale: 0.95, y: 15 }} 
-                            animate={{ scale: 1, y: 0 }} 
-                            exit={{ scale: 0.95, y: 15 }}
-                            transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-                            className="bg-white rounded-3xl shadow-xl w-full max-w-2xl overflow-hidden max-h-[90vh] flex flex-col"
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-                                <h4 className="font-extrabold text-slate-800 text-lg">Visualisation du document</h4>
-                                <button 
-                                onClick={() => setSelectedJustificatif(null)}
-                                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
-                                >
-                                <X size={20} />
-                                </button>
-                            </div>
-
-                            <div className="p-6 overflow-y-auto max-h-[70vh]">
-                                <img 
-                                    src={selectedJustificatif.document_url} 
-                                    alt="Justificatif" 
-                                    className="w-full h-auto rounded-xl"
-                                    referrerPolicy="no-referrer"
-                                />
-                            </div>
-                        </motion.div>
-                    </motion.div>
-                )}
             </AnimatePresence>
           </motion.div>
         )}
@@ -1048,9 +990,38 @@ export default function AdminDash({
             exit={{ opacity: 0, y: -10 }}
             className="space-y-8"
           >
-            <Suspense fallback={<Skeleton className="h-[100px] w-full" />}>
-              <StatCards />
-            </Suspense>
+            {/* Stats Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {isLoadingStats ? (
+                Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm animate-pulse flex flex-col justify-between">
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="w-12 h-12 bg-slate-100 rounded-2xl" />
+                      <div className="h-4 bg-slate-100 rounded w-16" />
+                    </div>
+                    <div className="h-8 bg-slate-100 rounded w-24 mb-2" />
+                    <div className="h-4 bg-slate-100 rounded w-32" />
+                  </div>
+                ))
+              ) : (
+                stats.map((stat, i) => (
+                  <div key={i} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="p-3 bg-slate-50 rounded-2xl">{stat.icon}</div>
+                      <span className="text-[10px] bg-slate-100 px-2 py-1 rounded-full font-bold text-slate-500 uppercase">{stat.trend}</span>
+                    </div>
+                    <div className="text-2xl font-black mb-1">
+                      {!isLoadingStats && stat.value !== null && stat.value !== undefined ? (
+                        stat.value
+                      ) : (
+                        <div className="h-8 w-24 bg-slate-100 animate-pulse rounded" />
+                      )}
+                    </div>
+                    <div className="text-sm text-slate-400 font-bold uppercase tracking-tight">{stat.label}</div>
+                  </div>
+                ))
+              )}
+            </div>
 
             {/* Charts Section */}
             <div className="grid lg:grid-cols-2 gap-8">
@@ -1063,16 +1034,59 @@ export default function AdminDash({
                   </select>
                 </div>
                 <div className="h-[300px] w-full">
-                  <Suspense fallback={<Skeleton className="h-[300px] w-full" />}>
-                  <MonthlyYieldWidget />
-                </Suspense>
+                  {isLoadingStats ? (
+                    <div className="h-full w-full flex items-end gap-3 justify-around bg-slate-50/50 p-6 rounded-3xl animate-pulse">
+                      <div className="h-[20%] w-8 bg-slate-200 rounded-t shrink-0" />
+                      <div className="h-[60%] w-8 bg-slate-200 rounded-t shrink-0" />
+                      <div className="h-[40%] w-8 bg-slate-200 rounded-t shrink-0" />
+                      <div className="h-[80%] w-8 bg-slate-200 rounded-t shrink-0" />
+                      <div className="h-[50%] w-8 bg-slate-200 rounded-t shrink-0" />
+                      <div className="h-[90%] w-8 bg-slate-200 rounded-t shrink-0" />
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={monthlyYield}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94A3B8', fontSize: 12}} />
+                        <YAxis axisLine={false} tickLine={false} tick={{fill: '#94A3B8', fontSize: 12}} />
+                        <Tooltip 
+                          cursor={{fill: '#F8FAFC'}} 
+                          contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)'}}
+                        />
+                        <Bar dataKey="meals" fill="#2D6A4F" radius={[6, 6, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
                 </div>
               </div>
 
               <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm">
-                <Suspense fallback={<Skeleton className="h-[300px] w-full" />}>
-                <GlobalInventoryWidget />
-              </Suspense>
+                <div className="flex items-center justify-between mb-8">
+                  <h3 className="text-lg font-bold">Volume des Stocks Nationaux</h3>
+                  <Package className="text-brand-orange" size={18} />
+                </div>
+                <div className="h-[300px] w-full">
+                  {isLoadingStats ? (
+                    <div className="h-full w-full flex items-end gap-3 justify-around bg-slate-50/50 p-6 rounded-3xl animate-pulse">
+                      <div className="h-[70%] w-8 bg-slate-200 rounded-t shrink-0" />
+                      <div className="h-[30%] w-8 bg-slate-200 rounded-t shrink-0" />
+                      <div className="h-[85%] w-8 bg-slate-200 rounded-t shrink-0" />
+                      <div className="h-[50%] w-8 bg-slate-200 rounded-t shrink-0" />
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={globalInventory}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94A3B8', fontSize: 12}} />
+                        <YAxis axisLine={false} tickLine={false} tick={{fill: '#94A3B8', fontSize: 12}} />
+                        <Tooltip 
+                          contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)'}}
+                        />
+                        <Bar dataKey="value" fill="#F59E0B" radius={[6, 6, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
               </div>
             </div>
           </motion.div>
@@ -1134,12 +1148,12 @@ export default function AdminDash({
               <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
                 <div>
                   <div className="text-[10px] font-black uppercase tracking-wider text-blue-600 font-mono">Dernier Menu Préparé</div>
-                  <div className="text-sm font-black text-slate-700 mt-2 line-clamp-2 leading-snug">
+                  <p className="text-sm font-black text-slate-700 mt-2 line-clamp-2 leading-snug">
                     {detailedMealReports && detailedMealReports.length > 0 
                       ? detailedMealReports[0].meal_description 
                       : detailedMealReports !== null ? "Aucun repas récent" : <div className="h-4 w-32 bg-slate-100 animate-pulse rounded" />
                     }
-                  </div>
+                  </p>
                 </div>
                 <span className="text-[10px] text-slate-400 font-bold mt-2">
                   {detailedMealReports && detailedMealReports.length > 0 
@@ -1559,7 +1573,7 @@ export default function AdminDash({
                         <td className="px-8 py-5 text-center">
                            {request.document_url ? (
                              <button 
-                               onClick={() => setSelectedJustificatif(request)}
+                               onClick={() => window.open(request.document_url, '_blank')}
                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-green/10 text-brand-green rounded-xl text-xs font-black uppercase hover:bg-brand-green hover:text-white transition-all shadow-sm"
                              >
                                <Eye size={14} /> Voir pièce
@@ -1706,6 +1720,58 @@ export default function AdminDash({
           </motion.div>
         )}
 
+        {activeTab === 'inventory' && (
+          <motion.div 
+            key="inventory"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="space-y-8"
+          >
+            <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm">
+                <div className="flex items-center justify-between mb-8">
+                  <h3 className="text-lg font-bold">Distribution Statistique des Vivres</h3>
+                  <Package size={18} className="text-slate-400" />
+                </div>
+                <div className="h-[300px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={globalInventory}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={80}
+                        outerRadius={100}
+                        paddingAngle={5}
+                        dataKey="value"
+                      >
+                        {globalInventory.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mt-8">
+                  {globalInventory.map((item, i) => (
+                    <div key={i} className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-3 h-3 rounded-full" style={{backgroundColor: COLORS[i % COLORS.length]}} />
+                        <span className="text-slate-400 text-[10px] font-black uppercase tracking-widest">{item.name}</span>
+                      </div>
+                      <div className="text-xl font-black text-slate-800">{item.value} {item.unit || 'kg'}</div>
+                    </div>
+                  ))}
+                  {globalInventory.length === 0 && (
+                    <div className="col-span-full text-center py-8 text-slate-400 italic">
+                      Aucune donnée d'inventaire disponible.
+                    </div>
+                  )}
+                </div>
+              </div>
+          </motion.div>
+        )}
 
         {activeTab === 'profile' && (
           <motion.div 
@@ -1969,7 +2035,17 @@ export default function AdminDash({
                                 {rep.photos && rep.photos.length > 0 && (
                                   <div className="pt-2 border-t border-slate-200/40">
                                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Preuve(s) photo :</p>
-                                    <PhotoGallery photos={rep.photos} onZoom={setSelectedZoomPhoto} />
+                                    <div className="flex gap-2 flex-wrap animate-fade">
+                                      {rep.photos.map((photo: string, pIdx: number) => (
+                                        <div 
+                                          key={pIdx} 
+                                          onClick={() => setSelectedZoomPhoto(photo)}
+                                          className="relative w-12 h-12 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden cursor-zoom-in hover:scale-105 transition-all"
+                                        >
+                                          <img src={photo} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                        </div>
+                                      ))}
+                                    </div>
                                   </div>
                                 )}
                               </div>
