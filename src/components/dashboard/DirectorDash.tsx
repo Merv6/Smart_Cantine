@@ -67,6 +67,7 @@ export default function DirectorDash({
 
   const [realInventory, setRealInventory] = React.useState<any[] | null>(null);
   const [recentReports, setRecentReports] = React.useState<any[] | null>(null);
+  const [notifications, setNotifications] = React.useState<any[] | null>(null);
   const [loading, setLoading] = React.useState(true);
   
   const fetchData = React.useCallback(async () => {
@@ -136,12 +137,17 @@ export default function DirectorDash({
           }
           
           if (targetSchoolId) {
-            const [inventoryRes, reportsRes] = await Promise.all([
+            const [inventoryRes, reportsRes, notificationsRes] = await Promise.all([
               supabase.from('inventory').select('*').eq('school_id', targetSchoolId),
               supabase.from('meal_reports')
                 .select('*')
                 .eq('school_id', targetSchoolId)
-                .order('created_at', { ascending: false })
+                .order('created_at', { ascending: false }),
+              supabase.from('inventory')
+                .select('*')
+                .eq('school_id', targetSchoolId)
+                .order('updated_at', { ascending: false })
+                .limit(5)
             ]);
             
             console.log('DEBUG: Target school ID', targetSchoolId);
@@ -149,6 +155,7 @@ export default function DirectorDash({
 
             setRealInventory(inventoryRes.data || []);
             setRecentReports(reportsRes.data || []);
+            setNotifications(notificationsRes.data || []);
           }
         }
       }
@@ -1258,8 +1265,8 @@ export default function DirectorDash({
                     <option>Avertissement</option>
                     <option>Stable</option>
                   </select>
-                  <Button onClick={() => setView('register')} className="rounded-2xl h-12 font-bold gap-2">
-                    <Plus size={18} /> Nouvel Arrivage
+                  <Button onClick={() => setView('inventory')} className="rounded-2xl h-12 font-bold gap-2 bg-blue-600 hover:bg-blue-700">
+                    <Package size={18} /> Nouveaux Arrivages ({notifications ? notifications.length : 0})
                   </Button>
                 </div>
               </div>
@@ -1345,6 +1352,29 @@ export default function DirectorDash({
                     Aucun stock enregistré. Veuillez ajouter un premier arrivage.
                   </div>
                 )}
+              </div>
+
+              <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8 mt-8">
+                <div className="flex items-center justify-between mb-8">
+                  <h3 className="text-xl font-bold font-display">Notifications Récentes</h3>
+                </div>
+                <div className="space-y-4">
+                  {notifications && notifications.length > 0 ? (
+                    notifications.map((n, i) => (
+                      <div key={i} className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                        <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center">
+                          <Package size={18} />
+                        </div>
+                        <div>
+                          <p className="font-bold text-slate-800 text-sm">Mise à jour: {n.item_name}</p>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase">Quantité actuelle: {n.quantity} {n.unit} • {new Date(n.updated_at).toLocaleDateString()}</p>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-slate-400 italic">Aucune nouvelle notification.</p>
+                  )}
+                </div>
               </div>
             </div>
           )}
