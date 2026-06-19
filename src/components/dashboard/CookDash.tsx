@@ -22,7 +22,7 @@ import {
   Filter,
   Image as ImageIcon
 } from 'lucide-react';
-import { Button, Input } from '../ui';
+import { Button, Input, ConfirmDialog } from '../ui';
 import { toast } from 'sonner';
 
 import { supabase } from '../../lib/supabase';
@@ -41,6 +41,7 @@ export default function CookDash({
   const [step, setStep] = React.useState(1);
   const [isLoading, setIsLoading] = React.useState(false);
   const [isSuccess, setIsSuccess] = React.useState(false);
+  const [confirmDialog, setConfirmDialog] = React.useState<{ isOpen: boolean; onConfirm: () => void; title: string; message: string } | null>(null);
   const [schoolId, setSchoolId] = React.useState<string | null>(null);
   const [userProfile, setUserProfile] = React.useState<any>(null);
   const [realInventory, setRealInventory] = React.useState<any[] | null>(null);
@@ -199,7 +200,15 @@ export default function CookDash({
   };
 
   const removeIngredient = (index: number) => {
-    setIngredients(ingredients.filter((_, i) => i !== index));
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Supprimer l\'ingrédient',
+      message: 'Êtes-vous sûr de vouloir supprimer cet ingrédient ? Cette action est irréversible.',
+      onConfirm: () => {
+        setIngredients(ingredients.filter((_, i) => i !== index));
+        toast.success('Ingrédient supprimé.');
+      }
+    });
   };
 
   const handleSubmitReport = async () => {
@@ -957,9 +966,17 @@ export default function CookDash({
                                   <div className="relative group overflow-hidden rounded-3xl border-4 border-slate-50 shadow-sm">
                                     <img src={p} className="w-full h-44 object-cover" />
                                     <button className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-xl" onClick={() => {
-                                      const nextPhotos = [...photos];
-                                      nextPhotos[idx] = null;
-                                      setPhotos(nextPhotos);
+                                      setConfirmDialog({
+                                        isOpen: true,
+                                        title: 'Supprimer la photo',
+                                        message: 'Êtes-vous sûr de vouloir supprimer cette photo ?',
+                                        onConfirm: () => {
+                                          const nextPhotos = [...photos];
+                                          nextPhotos[idx] = null;
+                                          setPhotos(nextPhotos);
+                                          toast.success('Photo supprimée.');
+                                        }
+                                      });
                                     }}>
                                       <Trash2 size={14} />
                                     </button>
@@ -1336,6 +1353,13 @@ export default function CookDash({
           </motion.div>
         )}
       </AnimatePresence>
+        <ConfirmDialog 
+          isOpen={!!confirmDialog?.isOpen} 
+          onClose={() => setConfirmDialog(null)} 
+          onConfirm={confirmDialog?.onConfirm || (() => {})} 
+          title={confirmDialog?.title || ''} 
+          message={confirmDialog?.message || ''} 
+        />
     </div>
   );
 }

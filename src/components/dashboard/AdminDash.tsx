@@ -43,8 +43,11 @@ import {
 } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from '../ui';
+import { Skeleton } from '../ui/Skeleton';
+import { DashboardWidget } from './DashboardWidget';
 import { toast } from 'sonner';
 import { supabase } from '../../lib/supabase';
+import { useDashboardCache } from '../../lib/DashboardCache';
 
 const COLORS = ['#2D6A4F', '#F59E0B', '#3B82F6', '#EF4444'];
 
@@ -64,6 +67,7 @@ export default function AdminDash({
   onViewChange?: (view: any) => void;
 }) {
   const isMerveille = initialUser?.email?.toLowerCase() === 'honvoumerveille@gmail.com';
+  const { cache, setCache } = useDashboardCache();
   const [activeTab, setActiveTabInternal] = React.useState<string>(initialView);
   
   const setActiveTab = (newTab: string) => {
@@ -100,7 +104,7 @@ export default function AdminDash({
   const selectedCommune = selectedDept?.communes.find(c => c.name === newSchool.commune);
   
   const [deptStats, setDeptStats] = React.useState<any[]>([]);
-  const [schoolsList, setSchoolsList] = React.useState<any[]>([]);
+  const [schoolsList, setSchoolsList] = React.useState<any[] | null>(null);
   const [pendingUsers, setPendingUsers] = React.useState<any[]>([]);
   const [statsData, setStatsData] = React.useState<{
     activeSchools: number | null;
@@ -136,9 +140,21 @@ export default function AdminDash({
   const [schoolSearch, setSchoolSearch] = React.useState('');
 
   const fetchDashboardData = React.useCallback(async () => {
+    const cachedData = cache['admin-dashboard'];
+    if (cachedData) {
+      setPendingUsers(cachedData.pendingUsers);
+      setSchoolsList(cachedData.schoolsList);
+      setDetailedMealReports(cachedData.detailedMealReports);
+      setDetailedInventoryFeed(cachedData.detailedInventoryFeed);
+      setStatsData(cachedData.statsData);
+      setGlobalInventory(cachedData.globalInventory);
+      setDeptStats(cachedData.deptStats);
+      setIsLoadingStats(false);
+      return;
+    }
+
     setIsLoadingStats(true);
     try {
-      // 1. Fetch pending validation requests
       const { data: requests, error: requestsError } = await supabase
         .from('validation_requests')
         .select(`
@@ -1148,12 +1164,12 @@ export default function AdminDash({
               <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
                 <div>
                   <div className="text-[10px] font-black uppercase tracking-wider text-blue-600 font-mono">Dernier Menu Préparé</div>
-                  <p className="text-sm font-black text-slate-700 mt-2 line-clamp-2 leading-snug">
+                  <div className="text-sm font-black text-slate-700 mt-2 line-clamp-2 leading-snug">
                     {detailedMealReports && detailedMealReports.length > 0 
                       ? detailedMealReports[0].meal_description 
                       : detailedMealReports !== null ? "Aucun repas récent" : <div className="h-4 w-32 bg-slate-100 animate-pulse rounded" />
                     }
-                  </p>
+                  </div>
                 </div>
                 <span className="text-[10px] text-slate-400 font-bold mt-2">
                   {detailedMealReports && detailedMealReports.length > 0 
@@ -1642,7 +1658,7 @@ export default function AdminDash({
             <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
                   <div>
-                    <h3 className="text-lg font-black text-slate-800">Liste des Établissements ({schoolsList.length})</h3>
+                    <h3 className="text-lg font-black text-slate-800">Liste des Établissements ({schoolsList ? schoolsList.length : '...'})</h3>
                     <p className="text-xs text-slate-400 font-medium">Cliquez sur une ligne d'établissement pour consulter le personnel, les stocks et les repas cuisinés.</p>
                   </div>
                   <div className="relative w-full sm:w-72">
@@ -1657,6 +1673,7 @@ export default function AdminDash({
                   </div>
                 </div>
                 <div className="overflow-x-auto">
+                    <DashboardWidget isLoading={isLoadingStats} skeleton={<div className="h-64 w-full bg-slate-100 animate-pulse rounded-2xl" />}>
                     <table className="w-full text-left">
                       <thead>
                         <tr className="bg-slate-50">
@@ -1695,12 +1712,12 @@ export default function AdminDash({
                             </td>
                           </tr>
                         ))}
-                        {schoolsList.length === 0 && (
+                        {(schoolsList || []).length === 0 && (
                           <tr>
                             <td colSpan={3} className="px-6 py-10 text-center text-slate-400 font-bold">Aucune école enregistrée.</td>
                           </tr>
                         )}
-                        {schoolsList.length > 0 && ((schoolsList || []).filter(school => {
+                        {(schoolsList || []).length > 0 && ((schoolsList || []).filter(school => {
                           const term = schoolSearch.toLowerCase();
                           return (
                             (school.name || '').toLowerCase().includes(term) ||
@@ -1715,6 +1732,7 @@ export default function AdminDash({
                         )}
                       </tbody>
                     </table>
+                    </DashboardWidget>
                 </div>
               </div>
           </motion.div>
@@ -1733,7 +1751,7 @@ export default function AdminDash({
                   <h3 className="text-lg font-bold">Distribution Statistique des Vivres</h3>
                   <Package size={18} className="text-slate-400" />
                 </div>
-                <div className="h-[300px] w-full">
+                <DashboardWidget isLoading={isLoadingStats} className="h-[300px] w-full" skeleton={<Skeleton className="h-[300px] w-full" />}>
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
@@ -1752,7 +1770,7 @@ export default function AdminDash({
                       <Tooltip />
                     </PieChart>
                   </ResponsiveContainer>
-                </div>
+                </DashboardWidget>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mt-8">
                   {globalInventory.map((item, i) => (
                     <div key={i} className="p-4 bg-slate-50 rounded-2xl border border-slate-100">

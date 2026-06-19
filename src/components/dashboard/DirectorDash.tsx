@@ -1346,37 +1346,6 @@ export default function DirectorDash({
                   </div>
                 )}
               </div>
-
-              <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8">
-                <div className="flex items-center justify-between mb-8">
-                  <h3 className="text-xl font-bold font-display">Historique des Mouvements</h3>
-                  <Button variant="ghost" size="sm" className="text-brand-green font-bold">Voir tout l'historique</Button>
-                </div>
-                <div className="space-y-4">
-                  {[
-                    { type: 'IN', item: 'Riz', qty: '+500kg', date: 'Hier, 14:20', from: 'PAM', status: 'Validé' },
-                    { type: 'OUT', item: 'Mais', qty: '-45kg', date: 'Hier, 08:30', from: 'Cuisine', status: 'Enregistré' },
-                    { type: 'IN', item: 'Huile', qty: '+20L', date: '15/04, 10:15', from: 'DONS', status: 'Validé' },
-                  ].map((log, i) => (
-                    <div key={i} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                      <div className="flex items-center gap-4">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                          log.type === 'IN' ? 'bg-emerald-100 text-emerald-600' : 'bg-brand-orange/10 text-brand-orange'
-                        }`}>
-                          {log.type === 'IN' ? <TrendingDown className="rotate-180" size={18} /> : <TrendingDown size={18} />}
-                        </div>
-                        <div>
-                          <div className="font-bold text-slate-800">{log.item} <span className={log.type === 'IN' ? 'text-emerald-500' : 'text-brand-orange'}>{log.qty}</span></div>
-                          <div className="text-[10px] text-slate-400 font-bold uppercase">{log.from} • {log.date}</div>
-                        </div>
-                      </div>
-                      <div className="text-[10px] font-black text-slate-400 uppercase bg-white px-3 py-1 rounded-lg shadow-sm border border-slate-100">
-                        {log.status}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
             </div>
           )}
 
